@@ -1,5 +1,5 @@
 {
-  "timestamp": 1743079185.40669,
+  "timestamp": 1743079445.083376,
   "goal": "build me an IDE",
   "reasoning_tree": {
     "Phase 1: Requirements Analysis and Architectural Design": {
@@ -26,21 +26,380 @@
           "step 7": "Consolidate the target user/language definition (Step 3), the selected MVP features with their descriptions (Step 5), and the list of non-goals (Step 6) into a single, well-structured Markdown document named `MVP_FEATURES.md`. Ensure the document clearly defines the scope of the MVP."
         }
       ],
-      "Task 1.2: Identify target programming languages and platforms": [],
-      "Task 1.3: Define target user profiles and key use cases": [],
-      "Task 1.4: Specify non-functional requirements (performance, extensibility, security, etc.)": [],
-      "Task 1.5: Conduct competitive analysis of existing IDEs": [],
-      "Task 1.6: Select core technology stack (UI framework, backend language, key libraries)": [],
-      "Task 1.7: Design high-level system architecture (major components, interactions)": [],
-      "Task 1.8: Design editor core architecture (text handling, rendering, syntax highlighting approach)": [],
-      "Task 1.9: Design plugin/extension system architecture and API strategy": [],
-      "Task 1.10: Plan language support strategy (e.g., LSP integration)": [],
-      "Task 1.11: Define configuration management and data persistence approach": [],
-      "Task 1.12: Create initial UI/UX wireframes or mockups": [],
-      "Task 1.13: Outline preliminary build, testing, and deployment strategy": [],
-      "Task 1.14: Document requirements and architectural decisions": []
+      "Task 1.2: Identify target programming languages and platforms": [
+        {
+          "step 1": "Analyze current programming language popularity and trends. Search the web for recent data (e.g., last 1-2 years) from sources like the Stack Overflow Developer Survey, TIOBE Index, PYPL PopularitY of Programming Language Index, and GitHub Octoverse. Identify the top 10-15 most commonly used or fastest-growing languages."
+        },
+        {
+          "step 2": "Identify the primary operating systems used by software developers. Search the web for recent developer surveys or market share statistics focusing on desktop OS usage (Windows, macOS, Linux distributions). Determine the relative prevalence of each major platform."
+        },
+        {
+          "step 3": "For the top 5 languages identified in step 1, research the maturity and availability of their development tooling ecosystems. Specifically investigate: availability of Language Server Protocol (LSP) implementations, Debug Adapter Protocol (DAP) implementations, popular linters, formatters, and build systems. Hint: Search terms like '[Language Name] LSP server', '[Language Name] debug adapter', '[Language Name] popular linters'."
+        },
+        {
+          "step 4": "Analyze the high-level technical considerations for supporting the target platforms (Windows, macOS, Linux) identified in step 2. Consider potential challenges related to cross-platform UI frameworks (e.g., Electron, Qt, Tauri, native options), file system interactions, process management, packaging, and distribution."
+        },
+        {
+          "step 5": "Synthesize the findings from the previous steps into a structured document (e.g., a Markdown file named 'language_platform_analysis.md'). This document should list: \n1. Candidate programming languages with notes on their popularity and tooling maturity (LSP, DAP, etc.).\n2. Target operating systems with notes on their prevalence and potential cross-platform development challenges."
+        },
+        {
+          "step 6": "Based on the analysis in 'language_platform_analysis.md', propose an initial, focused scope for the IDE. Recommend 1-3 specific programming languages and the target platform(s) (e.g., start with cross-platform support for Win/Mac/Linux, or prioritize one) for the Minimum Viable Product (MVP). Justify your recommendations based on factors like language popularity, tooling maturity (especially LSP availability), developer market share of platforms, and estimated implementation effort. Add this proposal as a new section in 'language_platform_analysis.md'."
+        }
+      ],
+      "Task 1.3: Define target user profiles and key use cases": [
+        {
+          "step 1": "Identify and list potential target user profiles for the IDE we are building. Consider factors like experience level (e.g., beginner, student, professional, expert), development domain (e.g., web development, data science, embedded systems, game development), primary programming languages (e.g., Python, JavaScript, Java, C++, Rust), and typical project complexity. Hint: You can search the web for 'common IDE user personas' or 'types of software developers' for inspiration."
+        },
+        {
+          "step 2": "For at least 3-5 distinct target user profiles identified in the previous step, create a detailed description for each. Include: a) A representative name/title (e.g., 'Maya - The Data Science Student', 'Alex - The Professional Full-Stack Developer'). b) Key technical skills, preferred languages, and typical experience level. c) Primary goals and motivations when choosing and using an IDE. d) Common frustrations or pain points experienced with current development tools or workflows. e) Desired features or capabilities in an ideal IDE."
+        },
+        {
+          "step 3": "Brainstorm a comprehensive list of key use cases (core functionalities and workflows) that the target users will perform within the IDE. Think broadly about the software development lifecycle. Hint: Consider categories like code writing & editing, code navigation & understanding, debugging, building & compilation, testing, version control interaction, refactoring, dependency management, deployment tasks, collaboration features, etc."
+        },
+        {
+          "step 4": "From the brainstormed list, select the 5-8 most critical use cases that are fundamental to the core purpose of an IDE and address the primary needs of the target user profiles defined earlier. These should represent the essential functionality for an initial version (MVP). Justify briefly why each selected use case is critical."
+        },
+        {
+          "step 5": "For each of the selected critical use cases, provide a detailed description. Include: a) The specific user goal the use case accomplishes. b) The primary target user profile(s) for this use case. c) A typical sequence of user actions or steps involved in performing the use case within the IDE. d) The expected outcome or result of successfully completing the use case. e) Any important variations, alternative flows, or error conditions to consider."
+        },
+        {
+          "step 6": "Consolidate the defined target user profiles and the detailed key use cases into a single, well-structured Markdown document named `REQUIREMENTS_USER_PROFILES_USE_CASES.md`. Use clear headings, bullet points, and formatting to ensure readability. Save this document in the project's 'docs' or 'requirements' directory (create one if it doesn't exist)."
+        },
+        {
+          "step 7": "Review the `REQUIREMENTS_USER_PROFILES_USE_CASES.md` document. Check for clarity, consistency between user profiles and use cases, and completeness of the descriptions. Ensure the use cases directly address the stated goals and pain points of the target users. Make any necessary refinements to improve the quality of the documentation."
+        }
+      ],
+      "Task 1.4: Specify non-functional requirements (performance, extensibility, security, etc.)": [
+        {
+          "step 1": "Identify and list the key categories of non-functional requirements (NFRs) relevant to building an Integrated Development Environment (IDE). Consider standard categories such as Performance, Scalability, Reliability, Usability (responsiveness/feedback aspects), Extensibility, Maintainability, Security, Portability, and Resource Usage. Create a temporary list or mental model of these categories to guide the subsequent steps."
+        },
+        {
+          "step 2": "Define specific and measurable **Performance** requirements for the IDE. Focus on key user interactions. Specify target metrics for: \n1. IDE startup time (e.g., target cold start < 5 seconds).\n2. File loading time (e.g., target < 1 second for a 10MB text file).\n3. Code completion/intellisense latency (e.g., target < 300ms for typical scenarios).\n4. UI responsiveness during background tasks (e.g., indexing, building).\nDocument these targets clearly."
+        },
+        {
+          "step 3": "Define **Scalability** requirements. Describe how the IDE should perform under increasing load. Specify requirements for:\n1. Handling large projects (e.g., number of files > 10,000, total codebase size > 1 million LOC).\n2. Handling large individual files (e.g., > 50MB).\n3. Concurrent operations (e.g., multiple build processes, simultaneous debugging sessions).\nDescribe expected behavior (e.g., 'graceful degradation' vs. 'consistent performance')."
+        },
+        {
+          "step 4": "Define **Reliability** requirements. Specify the expected stability and data integrity. Include:\n1. Target Mean Time Between Failures (MTBF) or acceptable crash frequency.\n2. Requirements for session recovery after a crash (e.g., restoring open files, unsaved changes).\n3. Data integrity guarantees (e.g., no corruption of project files or user settings)."
+        },
+        {
+          "step 5": "Define **Extensibility** requirements, focusing on the plugin/extension system (assuming one was decided upon in architectural design). Specify:\n1. The need for a well-defined, stable Extension API.\n2. Ease of discovery, installation, and management of extensions.\n3. Performance impact constraints for installed extensions (e.g., extensions should not significantly degrade core IDE performance).\n4. Isolation level between extensions and the core IDE."
+        },
+        {
+          "step 6": "Define **Security** requirements. Consider potential threats and specify mitigations:\n1. Secure execution environment for extensions (e.g., sandboxing, permission model).\n2. Protection against opening malicious project files.\n3. Secure handling of sensitive data (e.g., passwords/tokens for version control integration).\n4. Dependency security (e.g., process for vetting bundled dependencies)."
+        },
+        {
+          "step 7": "Define **Usability** requirements related to non-functional characteristics. Specify:\n1. UI responsiveness: Ensure the UI remains responsive (< 500ms feedback for most actions) even during background processing.\n2. Feedback mechanisms: Provide clear visual feedback for long-running operations (e.g., progress bars, status indicators).\n3. Consistency: Ensure consistent performance and behavior across different modules/features of the IDE."
+        },
+        {
+          "step 8": "Define **Maintainability** requirements to ensure the long-term health of the codebase. Specify:\n1. Adherence to defined coding standards and styles (referencing decisions from Task 1.3 if applicable).\n2. Requirement for modular design (enforcing principles decided in architecture).\n3. Documentation standards (e.g., API documentation for core modules and extension API).\n4. Target code complexity metrics (e.g., low cyclomatic complexity).\n5. Testability requirements (e.g., target unit test coverage > 80%, integration tests for key workflows)."
+        },
+        {
+          "step 9": "Define **Portability** requirements. Specify the target environments:\n1. List target Operating Systems (e.g., Windows 10+, macOS 11+, Ubuntu 20.04+).\n2. Specify target hardware architectures if necessary (e.g., x86-64, ARM64).\n3. Define any assumptions about required runtime environments (e.g., specific .NET version, Python version, Node.js version)."
+        },
+        {
+          "step 10": "Define **Resource Usage** requirements. Specify acceptable limits to ensure the IDE is not overly resource-intensive:\n1. Idle CPU usage target (e.g., < 2% CPU when idle).\n2. Peak CPU usage considerations (e.g., acceptable temporary peaks during build/indexing).\n3. Baseline memory consumption target (e.g., < 500MB RAM on startup with no project open).\n4. Memory consumption per project size (e.g., define an acceptable RAM increase relative to project size/complexity)."
+        },
+        {
+          "step 11": "Consolidate all defined non-functional requirements from steps 2-10 into a single, structured document. Organize the requirements under the categories identified in Step 1 (Performance, Scalability, etc.). Ensure each requirement is clearly articulated and, where possible, measurable or verifiable. Save this document as `NON_FUNCTIONAL_REQUIREMENTS.md` in the project's designated documentation directory (e.g., `/docs`)."
+        }
+      ],
+      "Task 1.5: Conduct competitive analysis of existing IDEs": [
+        {
+          "step 1": "Identify a list of potential competitor IDEs. Focus on both general-purpose IDEs and those specific to potential target languages or platforms (e.g., Python, Web Development, Java, C++). Hint: Use web searches for terms like 'top IDEs 2024', 'popular code editors', 'best IDE for [language]', 'VS Code competitors', 'JetBrains alternatives'."
+        },
+        {
+          "step 2": "From the initial list, select the top 4-5 most relevant competitors for a detailed analysis. Prioritize based on market share, feature overlap with a modern IDE, target user base, and technological approach. Document the selected competitors and the rationale for their selection in a new markdown file named `competitors.md`."
+        },
+        {
+          "step 3": "Define the key criteria for comparing the selected IDEs. Create a structured list or template covering aspects relevant to our goal of building a new IDE. Hint: Include categories like: Supported Languages/Platforms, Core Editing Features (intellisense, refactoring, syntax highlighting), Debugging Capabilities, Version Control Integration (Git), Extensibility/Plugin Ecosystem, Performance (startup time, resource usage), UI/UX Customization, Pricing/Licensing Model, Community Support, Unique Selling Propositions (USPs). Save this criteria list in a markdown file named `analysis_criteria.md`."
+        },
+        {
+          "step 4": "Gather detailed information for the *first* selected competitor IDE based on the criteria defined in `analysis_criteria.md`. Hint: Consult the IDE's official website, documentation, recent reviews, user forums, and comparison articles. Structure the gathered data clearly, perhaps in a dedicated section within a new file `competitive_data.md` or as a JSON object."
+        },
+        {
+          "step 5": "Repeat the data gathering process for the *second* selected competitor IDE, using the same criteria and structure as in the previous step. Append the findings to `competitive_data.md` or update the JSON object."
+        },
+        {
+          "step 6": "Repeat the data gathering process for the *third* selected competitor IDE, appending the findings to `competitive_data.md` or updating the JSON object."
+        },
+        {
+          "step 7": "Repeat the data gathering process for the *fourth* selected competitor IDE (and fifth, if applicable), appending the findings to `competitive_data.md` or updating the JSON object."
+        },
+        {
+          "step 8": "Consolidate the gathered data into a structured comparison table. Create a new file `comparison_table.md` and generate a markdown table where rows represent the analysis criteria and columns represent the competitor IDEs. Populate the table with the data collected in `competitive_data.md`."
+        },
+        {
+          "step 9": "Analyze the `comparison_table.md` to identify the primary strengths and weaknesses of each competitor IDE relative to the others and the defined criteria. Document these findings clearly, perhaps in a new section within `competitive_data.md` or a separate `analysis_summary.md`."
+        },
+        {
+          "step 10": "Based on the comparative analysis, identify potential gaps, underserved niches, or areas where existing IDEs could be improved. Consider aspects like performance bottlenecks, complex workflows, lack of specific integrations, or opportunities for novel features. Add these insights to the `analysis_summary.md` file."
+        },
+        {
+          "step 11": "Write a final summary report in `analysis_summary.md` (or create it if it doesn't exist). This report should concisely present: the key competitors analyzed, a high-level overview of their strengths/weaknesses, identified market gaps/opportunities, and potential strategic differentiators for our new IDE based on this competitive landscape. Ensure the report references the `comparison_table.md` where appropriate."
+        }
+      ],
+      "Task 1.6: Select core technology stack (UI framework, backend language, key libraries)": [
+        {
+          "step 1": "Review the previously defined functional requirements (e.g., target languages, debugging, version control, code completion, build system integration) and non-functional requirements (e.g., performance targets, cross-platform support - macOS, Windows, Linux, Web) stored in the project documentation (assume `docs/requirements.md`). Also, review the high-level architectural decisions (e.g., desktop application vs. web application, monolithic vs. microservices - assume `docs/architecture.md`). List the key constraints and goals influencing the technology stack selection."
+        },
+        {
+          "step 2": "Based on the target platform (Desktop/Web) identified in the architecture, evaluate potential UI frameworks. For Desktop: consider Electron (using web tech), Tauri (Rust + web tech), Qt (C++), Avalonia UI (.NET), or JavaFX/Swing (Java). For Web: consider React, Vue, Angular, or Svelte. Hint: Research and compare frameworks based on criteria like performance, cross-platform consistency, native integration capabilities, rendering performance, ecosystem size, community support, ease of embedding components like code editors/terminals, and licensing. Search the web for 'comparison of [framework type] UI frameworks for IDE development'."
+        },
+        {
+          "step 3": "Propose a primary UI framework based on the evaluation in the previous step. Justify the choice by explicitly linking it to the project requirements and architectural decisions. Document this choice and justification."
+        },
+        {
+          "step 4": "Evaluate potential backend languages for handling core IDE logic (file system operations, process management, LSP communication, plugin management). Consider options like Node.js (especially if using Electron/Web UI), Python, Go, Rust, C#, Java, or C++. Hint: Evaluate based on performance (especially for parsing, indexing, concurrent operations), memory footprint, cross-platform compilation/runtime, availability of libraries for key IDE functions (LSP clients, file watching, IPC, debug adapters), concurrency model, and ease of integration with the chosen UI framework. Search for 'best backend language for desktop application' or 'backend language for IDE development'."
+        },
+        {
+          "step 5": "Propose a primary backend language based on the evaluation in the previous step. Justify the choice, focusing on its suitability for IDE tasks and compatibility with the chosen UI framework. Document this choice and justification."
+        },
+        {
+          "step 6": "Identify key libraries or components required to implement core IDE features based on the chosen UI framework and backend language. Focus on: 1. Code Editor Component (e.g., Monaco Editor, CodeMirror, Scintilla, or framework-specific options), 2. Syntax Highlighting library (e.g., tree-sitter, Pygments, built-in editor features), 3. Language Server Protocol (LSP) client library for the backend language, 4. File System interaction/watching library, 5. Version Control library (e.g., Git bindings like libgit2sharp, nodegit, pygit2), 6. Terminal Emulator component (e.g., xterm.js, platform-specific controls), 7. Inter-Process Communication (IPC) mechanism (if UI and backend are separate processes, e.g., if using Electron). Hint: Search package managers (npm, pip, crates.io, NuGet, Maven Central) and code repositories (GitHub) for mature and well-maintained libraries matching these needs within the chosen language/framework ecosystem."
+        },
+        {
+          "step 7": "List the selected key libraries/components with brief justifications for each, considering factors like maturity, documentation, community support, performance, and licensing compatibility with the project goals. Add these to the technology stack documentation."
+        },
+        {
+          "step 8": "Consolidate the selected UI framework, backend language, and key libraries/components into a single document (`docs/tech_stack.md`). Include the rationale for each choice, linking back to specific project requirements and architectural decisions. Ensure the document clearly outlines the core technology stack for the IDE project."
+        }
+      ],
+      "Task 1.7: Design high-level system architecture (major components, interactions)": [
+        {
+          "step 1": "Review the previously gathered functional and non-functional requirements for the IDE project (refer to outputs from Tasks 1.1-1.6). Identify the key features and constraints that will drive the architectural design."
+        },
+        {
+          "step 2": "Based on the reviewed requirements and general knowledge of IDE structures, identify and list the major high-level components of the proposed IDE. Hint: Consider components like Core Editor, User Interface Shell, File System Abstraction/Manager, Language Support (via Language Server Protocol client), Build System Integration, Debugger Interface, Version Control Integration, Plugin Manager, Settings/Configuration Manager."
+        },
+        {
+          "step 3": "For each major component identified in the previous step, define its primary responsibilities and boundaries. Clearly state what each component *does* and what data it manages or processes."
+        },
+        {
+          "step 4": "Describe the primary interactions and data flow between the identified components. Specify how components communicate (e.g., direct calls, events, messages). Hint: Consider user workflows like opening a project, editing a file, triggering code completion, running a build, starting a debug session. Think about synchronous vs. asynchronous communication patterns, especially for potentially long-running tasks (like interacting with language servers or build tools)."
+        },
+        {
+          "step 5": "Propose a suitable high-level architectural style or pattern for the IDE (e.g., Microkernel/Plugin, Layered, Event-Driven, Client-Server for LSP). Justify your choice based on requirements like extensibility, maintainability, performance, and language agnosticism."
+        },
+        {
+          "step 6": "Create a document (e.g., in Markdown) summarizing the high-level architecture. Include the list of components, their responsibilities, and a description or diagram of their interactions. Hint: Consider using textual descriptions, or tools like Mermaid or PlantUML embedded in Markdown to create a component diagram illustrating the relationships."
+        },
+        {
+          "step 7": "Elaborate on how the proposed architecture supports extensibility, particularly for adding support for new programming languages, frameworks, or features. Describe the role of the Plugin Manager (if included) or other extension mechanisms."
+        },
+        {
+          "step 8": "Explain how the chosen architecture addresses key non-functional requirements identified earlier, such as performance (e.g., responsiveness during editing, building, debugging), scalability (handling large projects), reliability, and maintainability."
+        }
+      ],
+      "Task 1.8: Design editor core architecture (text handling, rendering, syntax highlighting approach)": [
+        {
+          "step 1": "Research and compare common data structures used for efficient text handling in editors, specifically focusing on Rope, Gap Buffer, and Piece Table. Analyze their performance characteristics (memory usage, speed of insertion/deletion, handling large files). Document the pros and cons of each in the context of building a modern IDE editor core. Recommend the most suitable data structure based on this analysis, justifying your choice."
+        },
+        {
+          "step 2": "Based on the recommended data structure from Step 1 (assume Piece Table or Rope unless strongly contraindicated by your research), define the core internal API for a `TextBuffer` module/class. Specify key methods for operations like: inserting text at a position, deleting a range of text, retrieving text within a given range, getting the total number of lines, retrieving the content of a specific line, searching text, and managing basic undo/redo state. Define the expected input parameters and return values for each method. Consider immutability or copy-on-write semantics if appropriate for the chosen structure."
+        },
+        {
+          "step 3": "Research and outline a rendering strategy for the editor view, prioritizing performance for large files. Focus on implementing virtual rendering (rendering only visible lines plus a small buffer above and below the viewport). Detail how this strategy will handle: calculating visible line ranges during scrolling, rendering line numbers, drawing the text cursor, highlighting the current selection, and basic fixed-width character rendering. Ignore complex text layout (like bi-directional text or ligatures) for now, but mention it as a future consideration. Document the proposed rendering loop."
+        },
+        {
+          "step 4": "Define the core internal API for a `Renderer` module/class. Specify how it interacts with the `TextBuffer` (to get line content and length) and the abstract UI framework (e.g., assuming functions like `draw_text(x, y, text, style)`, `draw_rect(x, y, width, height, color)` exist). Include methods for: rendering a complete frame based on viewport state (scroll position, dimensions), handling scroll events (vertical and horizontal), updating cursor position display, and drawing text selections. Define inputs (like viewport info, text buffer reference) and outputs (drawing commands or direct rendering)."
+        },
+        {
+          "step 5": "Research and compare different approaches for implementing syntax highlighting. Evaluate options such as: Regex-based tokenization, finite state machines, and using dedicated parser libraries (e.g., Tree-sitter). Compare them based on accuracy (handling nested structures, error recovery), performance (especially incremental updates), ease of adding/maintaining language support, and available ecosystem/grammars. Recommend the most suitable approach for a versatile IDE. Hint: Tree-sitter is a powerful and popular choice known for its robustness and incremental parsing capabilities."
+        },
+        {
+          "step 6": "Based on the recommended syntax highlighting approach from Step 5 (assume Tree-sitter unless strongly contraindicated), outline the architecture for a `SyntaxHighlighter` module/class. Describe its responsibilities: loading language grammars, parsing/re-parsing the `TextBuffer` content (potentially incrementally on edits), traversing the resulting syntax tree to identify tokens/nodes, mapping these tokens/nodes to abstract scope names (e.g., 'keyword.control', 'string.quoted', 'comment.line'), and providing this scope information per line or per token to the `Renderer`. Consider how theme definitions (mapping scope names to colors/styles) would be managed and applied."
+        },
+        {
+          "step 7": "Define the primary interaction patterns and interfaces between the `TextBuffer`, `Renderer`, and `SyntaxHighlighter` modules. Use textual descriptions or simple sequence diagrams (e.g., using Mermaid syntax in comments or markdown) to illustrate how key events propagate: \n a) User types a character.\n b) User scrolls the view.\n c) A new file is loaded.\n d) The theme is changed. \nSpecify the data passed between modules during these interactions (e.g., text ranges, style information, viewport coordinates)."
+        },
+        {
+          "step 8": "Consolidate the design decisions, API definitions, and interaction models from the previous steps into a comprehensive markdown document named `editor_core_architecture.md`. Ensure the document includes clear sections for: \n 1. Text Handling (Chosen Data Structure, `TextBuffer` API) \n 2. Rendering Strategy (`Renderer` API, Virtual Rendering Details) \n 3. Syntax Highlighting (Chosen Approach, `SyntaxHighlighter` API, Theming Considerations) \n 4. Component Interaction (Interfaces, Event Flow Diagrams/Descriptions). \nThis document will serve as the architectural blueprint for the editor core implementation."
+        }
+      ],
+      "Task 1.9: Design plugin/extension system architecture and API strategy": [
+        {
+          "step 1": "Research and analyze the plugin/extension architectures of popular IDEs such as VS Code, IntelliJ IDEA, Atom, and Eclipse. Focus on identifying common extension points, API design philosophies (e.g., specific APIs vs. generic hooks), sandboxing techniques, plugin loading mechanisms, and manifest file structures. Summarize key findings, strengths, and weaknesses of each approach in a markdown document."
+        },
+        {
+          "step 2": "Based on the IDE's core features defined in previous tasks (editor, file management, debugger interface, build system integration, etc.) and the research from Step 1, define a comprehensive list of potential extension points for our IDE. Categorize these points (e.g., UI Contribution, Command Registration, Language Support, Debug Adapter, Version Control Integration, Theming). Document these extension points clearly."
+        },
+        {
+          "step 3": "Propose a high-level design for the core Plugin API. Define the main entry points or objects that plugins will interact with (e.g., a central `ide` or `workspace` object). Specify the key modules or subsystems accessible through this API (e.g., `editor`, `filesystem`, `commands`, `notifications`, `ui`, `languages`). Consider API versioning strategies and communication patterns (sync/async, events). Outline the basic structure in the design document."
+        },
+        {
+          "step 4": "Design the plugin manifest format (e.g., `plugin.json`). Specify the required and optional fields, including metadata (name, version, author, description), entry point(s) for plugin code, activation events (e.g., `onCommand`, `onLanguage`, `onStartup`), contribution points (declaring menus, commands, views, settings, language features), and dependencies (on core IDE version or other plugins). Provide an example manifest structure."
+        },
+        {
+          "step 5": "Evaluate and choose a plugin discovery and loading mechanism. Options include scanning a designated directory, using a configuration file, or integrating with a registry. Decide on a loading strategy (e.g., eager loading at startup vs. lazy loading based on activation events). Document the chosen mechanism and its rationale, considering performance and flexibility."
+        },
+        {
+          "step 6": "Outline the security model and sandboxing strategy for plugins. Describe how the IDE will isolate plugin execution to prevent interference with the core application and other plugins, and protect user systems. Consider techniques like separate processes, restricted APIs, or a permission model where plugins declare required access rights. Detail the proposed security measures in the design document."
+        },
+        {
+          "step 7": "Define the strategy for plugin lifecycle management, covering installation, uninstallation, enabling/disabling, and updates. Consider how the IDE will handle version compatibility between plugins and the core application, and potential dependency conflicts. Outline the user-facing aspects of managing extensions."
+        },
+        {
+          "step 8": "Consolidate all design decisions from the previous steps into a single, comprehensive markdown document titled 'Plugin System Architecture and API Strategy'. Ensure it includes the research summary, defined extension points, API structure overview, manifest format specification, loading/discovery mechanism, security model, lifecycle management plan, and any relevant diagrams (e.g., a high-level component diagram)."
+        }
+      ],
+      "Task 1.10: Plan language support strategy (e.g., LSP integration)": [
+        {
+          "step 1": "Research the Language Server Protocol (LSP). Understand its purpose, architecture (client-server communication via JSON-RPC), common capabilities (e.g., diagnostics, completion, hover, definition), and benefits for IDE development. Summarize your findings in a temporary note. Hint: Search the web for the official LSP specification and introductory articles/tutorials."
+        },
+        {
+          "step 2": "Based on previous requirements gathering (refer to project documentation if available, otherwise assume standard IDE features), list the core language-specific features the IDE aims to support. Examples include: syntax highlighting, code completion, error/warning diagnostics (linting), code formatting, go-to-definition, find references, hover information, and basic refactoring. Prioritize these features (e.g., Must-have, Nice-to-have)."
+        },
+        {
+          "step 3": "Evaluate the feasibility and advantages/disadvantages of adopting LSP as the primary strategy for implementing the language features identified in Step 2. Compare this approach against building language-specific support from scratch or using alternative methods (e.g., direct integration with linters/formatters, Tree-sitter for parsing). Focus on extensibility, maintainability, and breadth of language support."
+        },
+        {
+          "step 4": "Decide whether to primarily rely on LSP. If yes, proceed with LSP-focused planning. If no, outline the alternative strategy (this plan assumes LSP is chosen, adjust if necessary based on your evaluation). Document the rationale for the decision."
+        },
+        {
+          "step 5": "Identify potential initial target languages for the IDE (e.g., Python, JavaScript, TypeScript, HTML, CSS). For each target language, research the availability and maturity of existing Language Servers. Hint: Search online resources like the official LSP website's implementor list, GitHub, and language-specific communities."
+        },
+        {
+          "step 6": "Outline the high-level architecture for LSP integration within the IDE. Describe the necessary components, including: an LSP client module responsible for managing language server lifecycles (starting/stopping server processes), handling JSON-RPC communication (sending requests/notifications, receiving responses/notifications), and mapping LSP data structures to the IDE's internal models and UI elements. Hint: Consider using existing libraries for JSON-RPC handling if available for the target platform/language of the IDE itself."
+        },
+        {
+          "step 7": "Define a strategy for handling languages *without* available or suitable Language Servers, or for providing baseline functionality even before an LSP server is fully initialized. Consider options like basic syntax highlighting using grammar files (e.g., TextMate grammars) or simpler, non-LSP-based linters/formatters."
+        },
+        {
+          "step 8": "Document the chosen language support strategy, incorporating the research, decisions, and architectural outline from the previous steps. Create a new file `docs/architecture/language_support_strategy.md` and detail the plan, including: the role of LSP, the LSP client architecture overview, the plan for initial target languages and their servers, and the fallback strategy for non-LSP languages or features. Ensure this document integrates with the overall architectural design."
+        }
+      ],
+      "Task 1.11: Define configuration management and data persistence approach": [
+        {
+          "step 1": "Analyze the core features and potential extensions of the IDE (identified in previous steps) and list all aspects that should be configurable by the user or project. Consider editor settings (font, theme, tabs vs spaces, line numbers), keybindings, language-specific settings (linters, formatters), build system configurations, debugger settings, version control integration, extension settings, and UI layout preferences."
+        },
+        {
+          "step 2": "Evaluate common configuration file formats (e.g., JSON, YAML, TOML, INI, .properties) for storing IDE settings. Select the most suitable format(s), justifying your choice based on criteria such as human readability, ease of parsing, support for comments, hierarchical structure capabilities, ecosystem support (availability of parsers/validators), and suitability for different configuration scopes (user vs. project). Hint: JSON is widely used but lacks comments; YAML is readable but parsing can be complex; TOML is simpler than YAML."
+        },
+        {
+          "step 3": "Define the configuration scopes (e.g., default, user-global, workspace/project-specific) and specify the hierarchy or precedence rules for how settings are resolved when defined in multiple scopes (e.g., project settings override user settings, which override defaults). Determine the standard file locations for each scope (e.g., `~/.config/MyIDE/settings.json`, `<project_root>/.myide/settings.json`)."
+        },
+        {
+          "step 4": "Outline the mechanism for loading, accessing, and saving configuration. Describe how default settings will be provided, how configuration files will be located and parsed, how settings will be merged according to the defined precedence, and how changes made through the IDE's UI will be persisted back to the appropriate configuration file. Consider error handling for malformed files and potential validation strategies (e.g., using schema validation). Hint: Consider implementing a singleton configuration manager class."
+        },
+        {
+          "step 5": "Identify data, other than user configuration, that needs to persist between IDE sessions. Examples include: recently opened files/projects list, window size/position, panel layouts, unsaved file recovery data (session state), breakpoints, bookmarks, command history, and potentially data managed by specific extensions."
+        },
+        {
+          "step 6": "Propose appropriate persistence mechanisms for the different types of data identified in the previous step. Evaluate options like plain text files (e.g., for simple lists), structured text files (e.g., JSON for session state), embedded databases (e.g., SQLite for more complex, structured, or relational data like breakpoint details), or platform-specific storage APIs. Justify your choices based on data complexity, query requirements, performance needs, atomicity guarantees, and ease of implementation."
+        },
+        {
+          "step 7": "Describe the strategy for managing persistent data storage, including initialization, reading, writing, and potential data migration strategies if the data format evolves in future versions. Consider aspects like serialization/deserialization methods, error handling (e.g., corrupted data files), backup mechanisms (if necessary), and ensuring data integrity. Hint: Clearly define the location for storing this application support data (e.g., `~/.local/share/MyIDE` on Linux, Application Support directory on macOS, AppData on Windows)."
+        },
+        {
+          "step 8": "Consolidate the decisions made in the previous steps into a dedicated section within the main architectural design document. Clearly document the chosen configuration format(s), scope hierarchy, file locations, loading/saving mechanisms, persistent data types, chosen storage mechanisms, and data management strategies."
+        }
+      ],
+      "Task 1.12: Create initial UI/UX wireframes or mockups": [
+        {
+          "step 1": "Analyze the documented core features and requirements for the IDE (from previous tasks in Phase 1). List the essential UI components needed to support these features. Examples include: Text Editor, File Explorer/Tree View, Integrated Terminal, Debugger Panel, Output/Console Window, Menu Bar, Status Bar, Search/Replace Panel, Version Control Panel."
+        },
+        {
+          "step 2": "Propose a default layout for the main IDE window, arranging the core components identified in Step 1. Describe this layout textually. Hint: Consider common IDE layouts like a central editor region, left sidebar for navigation (File Explorer, Version Control), bottom panel for Terminal/Output/Debugger, top Menu Bar, and bottom Status Bar. You may optionally generate a simple ASCII art representation of this layout."
+        },
+        {
+          "step 3": "For each major UI component identified (Editor, File Explorer, Terminal, etc.), create a textual description of its basic wireframe appearance and key interactive elements. For example, for the Text Editor: 'Rectangular area, displays text content with line numbers, scrollbars, potentially a minimap'. For the File Explorer: 'Tree view structure, icons for files/folders, allows expansion/collapse, selection highlights'."
+        },
+        {
+          "step 4": "Consolidate the layout description (Step 2) and individual component descriptions (Step 3) into a structured data format. Generate a JSON object that represents the initial UI wireframe specification. This JSON should define the main window layout (e.g., using regions like 'left-sidebar', 'main-panel', 'bottom-panel') and list the components within each region, along with their key described features. Hint: Use clear keys like 'layout', 'components', 'features'."
+        },
+        {
+          "step 5": "Briefly outline potential UI variations or themes mentioned in the requirements, such as light/dark modes or configurable panel arrangements. Add a section to the JSON specification or a separate text note mentioning these considerations for future UI development. Hint: This step is about acknowledging flexibility, not fully designing themes yet."
+        },
+        {
+          "step 6": "Save the generated JSON wireframe specification and any accompanying textual/ASCII descriptions to a file named 'initial_ui_wireframes.json' within the project's 'docs/design' directory. Hint: Ensure the directory exists or create it first."
+        }
+      ],
+      "Task 1.13: Outline preliminary build, testing, and deployment strategy": [
+        {
+          "step 1": "Retrieve and summarize the primary technology stack (programming languages, frameworks, runtime environments like Electron if applicable) and target operating systems decided upon in previous architectural planning steps. This context is crucial for the subsequent strategy outline."
+        },
+        {
+          "step 2": "Based on the identified technology stack (assuming Electron/Node.js/TypeScript), propose a preliminary build strategy. Outline the core steps: dependency management (e.g., using npm or yarn), code compilation/transpilation (e.g., using `tsc` for TypeScript), asset bundling for renderer processes (e.g., using Webpack or Vite), and packaging the application for distribution. Suggest specific tools like `electron-builder` or `electron-packager` for creating distributable application bundles. Mention considerations for cross-platform builds (Windows, macOS, Linux)."
+        },
+        {
+          "step 3": "Define a preliminary testing strategy. Specify the types of tests to be implemented (Unit, Integration, End-to-End). Recommend suitable testing frameworks and tools based on the tech stack (e.g., Jest or Mocha/Chai for unit/integration tests; Playwright or Spectron for E2E testing of Electron apps). Briefly outline the scope for each test type (e.g., unit tests for utility functions and core logic, integration tests for inter-module communication, E2E tests for user workflows)."
+        },
+        {
+          "step 4": "Outline a plan for test automation and Continuous Integration (CI). Describe how the defined tests (unit, integration, E2E) will be run automatically. Suggest integrating a CI service (e.g., GitHub Actions, GitLab CI, Jenkins) to trigger builds and tests automatically upon code commits or pull requests to ensure code quality and stability early in the development cycle."
+        },
+        {
+          "step 5": "Propose a preliminary deployment strategy targeting the specified desktop operating systems (Windows, macOS, Linux). Detail how the application packages generated by the build process (e.g., via `electron-builder`) will be distributed. Suggest creating standard installers/packages for each OS (e.g., `.exe`/`.msi` for Windows, `.dmg` for macOS, `.deb`/`.rpm`/`.AppImage` for Linux)."
+        },
+        {
+          "step 6": "Outline a preliminary strategy for handling application updates after deployment. Suggest mechanisms for checking for updates and installing them. Hint: Consider using libraries like `electron-updater` which integrates with `electron-builder` to facilitate automatic updates."
+        },
+        {
+          "step 7": "Consolidate the outlined build, testing, and deployment strategies into a single markdown document. Create a file named `build_test_deploy_strategy.md` within the project's documentation directory (e.g., `docs/planning/`). Ensure the document clearly sections each strategy (Build, Testing, Deployment) and summarizes the key decisions and proposed tools/approaches."
+        }
+      ],
+      "Task 1.14: Document requirements and architectural decisions": [
+        {
+          "step 1": "Create a dedicated directory named 'docs' at the root of the project repository to store all project documentation."
+        },
+        {
+          "step 2": "Inside the 'docs' directory, create a new Markdown file named 'REQUIREMENTS.md'. This file will contain the functional and non-functional requirements gathered in previous steps."
+        },
+        {
+          "step 3": "Open 'REQUIREMENTS.md' and add a main heading '# Requirements Specification'. Create two subheadings: '## Functional Requirements' and '## Non-Functional Requirements'."
+        },
+        {
+          "step 4": "Under the '## Functional Requirements' section in 'REQUIREMENTS.md', summarize the core IDE features identified and prioritized in previous tasks (e.g., 1.2 Core Feature Identification, 1.3 Feature Prioritization). List each major feature (e.g., Code Editor, Syntax Highlighting, Debugging Support, Version Control Integration, Build System Integration, Project Management, Extensibility/Plugins) with a brief description. *Hint: Refer to the outputs of tasks 1.2 and 1.3.*"
+        },
+        {
+          "step 5": "Under the '## Non-Functional Requirements' section in 'REQUIREMENTS.md', summarize the key NFRs identified (e.g., Performance targets, Platform compatibility, Usability goals, Security considerations, Scalability). *Hint: Refer to the output of task 1.4 Non-Functional Requirements Definition.*"
+        },
+        {
+          "step 6": "Inside the 'docs' directory, create a new Markdown file named 'ARCHITECTURE.md'. This file will document the high-level architectural decisions."
+        },
+        {
+          "step 7": "Open 'ARCHITECTURE.md' and add a main heading '# Architectural Design Document'. Create subheadings: '## Overview', '## High-Level Architecture', '## Technology Stack', '## Key Architectural Decisions', '## Component Interaction'."
+        },
+        {
+          "step 8": "Under the '## Overview' section in 'ARCHITECTURE.md', write a brief paragraph summarizing the purpose of the IDE and the main goals driving the architecture."
+        },
+        {
+          "step 9": "Under the '## High-Level Architecture' section in 'ARCHITECTURE.md', describe the chosen architectural pattern (e.g., Plugin-based architecture using Electron/VS Code Extension API, Microservices, Monolith). Explain the primary components and their responsibilities at a high level. *Hint: Refer to the output of task 1.6 Architectural Pattern Selection. Consider mentioning layers like Presentation, Core Logic, Data Persistence, Extension Host if applicable.*"
+        },
+        {
+          "step 10": "Under the '## Technology Stack' section in 'ARCHITECTURE.md', list the chosen technologies (languages, frameworks, libraries, platforms, databases) identified in previous tasks. Include versions where relevant. *Hint: Refer to the output of task 1.5 Technology Stack Selection.*"
+        },
+        {
+          "step 11": "Under the '## Key Architectural Decisions' section in 'ARCHITECTURE.md', document significant choices made and their justifications. For each decision (e.g., choice of Electron vs native, UI framework selection, IPC mechanism), briefly explain the rationale, alternatives considered, and trade-offs. *Hint: Link decisions back to specific functional or non-functional requirements documented in REQUIREMENTS.md where possible. Refer to discussions/outputs from tasks 1.5, 1.6, and potentially feature-specific deep dives like 1.7-1.13.*"
+        },
+        {
+          "step 12": "Under the '## Component Interaction' section in 'ARCHITECTURE.md', briefly describe how the major architectural components identified in Step 9 are expected to communicate (e.g., APIs, Inter-Process Communication (IPC), event bus). A simple textual description or a list of primary interactions is sufficient for now. *Hint: Focus on core interactions like editor <-> language server, UI <-> backend services, core <-> plugins.*"
+        },
+        {
+          "step 13": "Review both 'REQUIREMENTS.md' and 'ARCHITECTURE.md' for clarity, consistency, and completeness. Ensure that the terminology used is consistent across both documents and reflects the decisions made throughout Phase 1. Make any necessary corrections or additions."
+        },
+        {
+          "step 14": "Commit the 'docs' directory containing 'REQUIREMENTS.md' and 'ARCHITECTURE.md' to the version control system with a descriptive commit message, such as 'docs: Add initial requirements and architecture documentation'."
+        }
+      ]
     },
-    "Phase 2: Core Editor and Workspace Implementation": {},
+    "Phase 2: Core Editor and Workspace Implementation": {
+      "Task 2.1: Implement core text area widget for code display and input": [],
+      "Task 2.2: Integrate syntax highlighting library/engine": [],
+      "Task 2.3: Add line numbering display to the editor gutter": [],
+      "Task 2.4: Implement cursor positioning and text selection logic": [],
+      "Task 2.5: Implement basic undo/redo functionality": [],
+      "Task 2.6: Implement editor scrolling (vertical and horizontal)": [],
+      "Task 2.7: Develop file tree view component": [],
+      "Task 2.8: Implement logic to read and display directory structures in the file tree": [],
+      "Task 2.9: Implement file opening mechanism (load file content into editor instance)": [],
+      "Task 2.10: Implement file saving mechanism (write editor content back to disk)": [],
+      "Task 2.11: Develop UI for managing multiple open files (e.g., tabs)": [],
+      "Task 2.12: Implement workspace/project loading (selecting a root folder)": [],
+      "Task 2.13: Implement create/delete/rename file and folder operations via UI": [],
+      "Task 2.14: Integrate file tree selection to open files in the editor": [],
+      "Task 2.15: Implement visual indicators for unsaved changes in open files": []
+    },
     "Phase 3: Language Support and Intelligence Features (Syntax Highlighting, Completion, Linting)": {},
     "Phase 4: Build, Run, and Debug Integration": {},
     "Phase 5: Version Control Integration": {},
@@ -48,6 +407,6 @@
     "Phase 7: Testing, Performance Optimization, and Refinement": {},
     "Phase 8: Packaging, Documentation, and Release": {}
   },
-  "last_processed_phase": "Phase 1: Requirements Analysis and Architectural Design",
-  "last_processed_task": "Task 1.1: Define core IDE features and scope (MVP)"
+  "last_processed_phase": "Phase 2: Core Editor and Workspace Implementation",
+  "last_processed_task": null
 }

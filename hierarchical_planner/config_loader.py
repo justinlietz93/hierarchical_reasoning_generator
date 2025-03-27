@@ -28,6 +28,14 @@ DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
         'max_output_tokens': 8192,
         'retries': 3
     },
+    'deepseek': {
+        'api_key': 'DEEPSEEK_API_KEY', # Default to checking this env var
+        'base_url': 'https://api.deepseek.com/v1',
+        'model_name': 'DeepSeek-V3-0324',
+        'temperature': 0.6,
+        'max_tokens': 8192,
+        'top_p': 1.0
+    },
     'files': {
         'default_task': 'task.txt',
         'default_output': 'reasoning_tree.json',
@@ -42,26 +50,27 @@ DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
 
 # Custom exceptions are now defined in exceptions.py
 
-def _resolve_api_key(key_setting: Optional[str]) -> Optional[str]:
+def _resolve_api_key(key_setting: Optional[str], default_env_var: str) -> Optional[str]:
     """
-    Resolves the API key based on the config setting.
+    Resolves an API key based on the config setting.
 
     Resolution logic:
-    1. If key_setting is None or empty, check 'GEMINI_API_KEY' env var.
+    1. If key_setting is None or empty, check the default_env_var.
     2. If key_setting looks like a direct key (heuristic: >20 chars, no spaces),
        check if an env var with that name exists (prefer env var), otherwise use the setting directly.
     3. Assume key_setting is an env var name and check it.
-    4. As a final fallback, check 'GEMINI_API_KEY' env var again.
+    4. As a final fallback, check default_env_var again.
 
     Args:
-        key_setting: The value of 'api.key' from the configuration.
+        key_setting: The value of the api key from the configuration.
+        default_env_var: The default environment variable name to check.
 
     Returns:
         The resolved API key string, or None if resolution fails.
     """
     if not key_setting:
         # If key setting is null or empty, rely solely on direct env var check
-        return os.getenv('GEMINI_API_KEY')
+        return os.getenv(default_env_var)
 
     # Check if the setting itself is the key (basic check: contains no spaces and is long enough)
     # This is a heuristic and might need refinement. Assume keys don't look like typical env var names.
@@ -76,8 +85,8 @@ def _resolve_api_key(key_setting: Optional[str]) -> Optional[str]:
     # Assume the setting is an environment variable name
     api_key = os.getenv(key_setting)
     if not api_key:
-        # As a fallback, also check the default GEMINI_API_KEY env var
-        api_key = os.getenv('GEMINI_API_KEY')
+        # As a fallback, also check the default env var
+        api_key = os.getenv(default_env_var)
 
     return api_key
 
@@ -132,9 +141,9 @@ def load_config(config_path: str = 'config/config.yaml') -> Dict[str, Any]:
         raise ConfigError(f"Unexpected error loading configuration file '{abs_config_path}': {e}") from e
 
 
-    # Resolve the API key
+    # Resolve the Gemini API key
     api_key_setting = config.get('api', {}).get('key')
-    resolved_api_key = _resolve_api_key(api_key_setting)
+    resolved_api_key = _resolve_api_key(api_key_setting, 'GEMINI_API_KEY')
 
     if not resolved_api_key:
         # If still no key, raise a specific ApiKeyError
@@ -147,7 +156,19 @@ def load_config(config_path: str = 'config/config.yaml') -> Dict[str, Any]:
     # Store the resolved key back into the config dict for easy access
     config['api']['resolved_key'] = resolved_api_key
     # Avoid logging the key itself unless debugging
-    logger.info("API key resolved successfully.")
+    logger.info("Gemini API key resolved successfully.")
+
+    # Resolve the DeepSeek API key if it exists in config
+    if 'deepseek' in config:
+        deepseek_key_setting = config.get('deepseek', {}).get('api_key')
+        resolved_deepseek_key = _resolve_api_key(deepseek_key_setting, 'DEEPSEEK_API_KEY')
+        
+        # Store the resolved key back into the config dict
+        if resolved_deepseek_key:
+            config['deepseek']['resolved_key'] = resolved_deepseek_key
+            logger.info("DeepSeek API key resolved successfully.")
+        else:
+            logger.warning("DeepSeek API key could not be resolved. Fallback to DeepSeek will not be available.")
 
     # Resolve relative file paths (task, output, log) based on the script directory
     # This assumes the paths in config.yaml are relative to the `hierarchical_planner` dir
@@ -172,7 +193,8 @@ if __name__ == "__main__":
 
         # Test API key resolution specifically
         print("\nTesting API Key Resolution:")
-        print(f"Resolved Key: {loaded_config.get('api', {}).get('resolved_key')}")
+        print(f"Resolved Gemini Key: {loaded_config.get('api', {}).get('resolved_key')}")
+        print(f"Resolved DeepSeek Key: {loaded_config.get('deepseek', {}).get('resolved_key')}")
 
     except ConfigError as e:
         print(f"Configuration Error: {e}")

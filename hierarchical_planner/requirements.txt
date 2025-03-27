@@ -2,3 +2,5 @@ google-generativeai
 python-dotenv
 PyYAML
 pytest
+openai
+anthropic

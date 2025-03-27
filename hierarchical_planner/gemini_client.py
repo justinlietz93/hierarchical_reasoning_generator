@@ -14,6 +14,8 @@ from typing import Dict, Any
 
 # Local imports for exceptions
 from .exceptions import ApiKeyError, ApiCallError, ApiResponseError, ApiBlockedError, JsonParsingError, JsonProcessingError
+# Import DeepSeek client for fallback
+from . import deepseek_v3_client
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -21,9 +23,17 @@ logger = logging.getLogger(__name__)
 # Global variables to store initialized model
 _gemini_model = None
 _gemini_model_name = None
+_client_configured = False
+_deepseek_fallback_enabled = False
 
 def configure_client(api_key: str):
     """Configures the Gemini client with the API key."""
+    global _client_configured
+    
+    # Skip if already configured
+    if _client_configured:
+        return
+        
     if not api_key:
         # This check might be redundant if config_loader ensures key exists
         # but kept for safety.
@@ -32,10 +42,34 @@ def configure_client(api_key: str):
     try:
         genai.configure(api_key=api_key)
         logger.info("Gemini client configured successfully.")
+        _client_configured = True
     except Exception as e:
         # Catch potential configuration errors from the library
         logger.error(f"Failed to configure Gemini client: {e}", exc_info=True)
         raise ApiKeyError(f"Failed to configure Gemini client: {e}") from e # Use custom exception
+
+def configure_deepseek_fallback(config: Dict[str, Any]):
+    """Configure the DeepSeek client for fallback if API key is available."""
+    global _deepseek_fallback_enabled
+    
+    deepseek_config = config.get('deepseek', {})
+    api_key = deepseek_config.get('api_key')
+    base_url = deepseek_config.get('base_url', 'https://api.deepseek.com/v1')
+    
+    if not api_key:
+        logger.warning("DeepSeek fallback is disabled because no API key was provided")
+        _deepseek_fallback_enabled = False
+        return False
+        
+    try:
+        deepseek_v3_client.configure_client(api_key, base_url)
+        _deepseek_fallback_enabled = True
+        logger.info("DeepSeek fallback is enabled and configured successfully")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to configure DeepSeek fallback: {e}")
+        _deepseek_fallback_enabled = False
+        return False
 
 def get_gemini_model(config: Dict[str, Any]):
     """Initializes and returns the Gemini generative model based on config."""
@@ -80,6 +114,17 @@ def get_gemini_model(config: Dict[str, Any]):
         logger.error(f"Failed to initialize Gemini model '{model_name}': {e}", exc_info=True)
         # Catch potential model initialization errors
         raise ApiCallError(f"Failed to initialize Gemini model '{model_name}': {e}") from e # Use custom exception
+
+def is_rate_limit_error(exception: Exception) -> bool:
+    """Check if the exception is due to rate limiting."""
+    error_msg = str(exception).lower()
+    return (
+        "429" in error_msg or 
+        "quota" in error_msg or 
+        "rate limit" in error_msg or
+        "too many requests" in error_msg or
+        "resource exhausted" in error_msg
+    )
 
 async def generate_content(prompt: str, config: Dict[str, Any]) -> str:
     """
@@ -193,6 +238,8 @@ async def generate_structured_content(prompt: str, config: Dict[str, Any], struc
         # Remove markdown code blocks if present (compatible with all Python versions)
         if cleaned_response.startswith("```json"):
             cleaned_response = cleaned_response[7:] # Remove ```json prefix
+        elif cleaned_response.startswith("```"):
+            cleaned_response = cleaned_response[3:] # Remove ``` prefix
         if cleaned_response.endswith("```"):
             cleaned_response = cleaned_response[:-3] # Remove ``` suffix
         cleaned_response = cleaned_response.strip()
@@ -221,6 +268,12 @@ async def generate_structured_content(prompt: str, config: Dict[str, Any], struc
 
 async def call_gemini_with_retry(prompt_template: str, context: dict, config: Dict[str, Any], is_structured: bool = True):
     """Calls the appropriate Gemini client function with retries, using config."""
+    global _deepseek_fallback_enabled
+    
+    # Make sure DeepSeek fallback is configured if available in config
+    if not _deepseek_fallback_enabled and 'deepseek' in config:
+        configure_deepseek_fallback(config)
+        
     prompt = prompt_template.format(**context)
     last_exception = None
     max_retries = config.get('api', {}).get('retries', 3) # Get retries from config
@@ -245,5 +298,18 @@ async def call_gemini_with_retry(prompt_template: str, context: dict, config: Di
                 await asyncio.sleep(wait_time) # Exponential backoff
             else:
                 logger.error(f"Max retries ({max_retries}) reached for prompt. Last error: {last_exception}", exc_info=True)
-                # Raise ApiCallError after all retries fail
+                
+                # Check if this was a rate limit error and if DeepSeek fallback is available
+                if _deepseek_fallback_enabled and is_rate_limit_error(last_exception):
+                    logger.info("Falling back to DeepSeek model after Gemini rate limit...")
+                    try:
+                        if is_structured:
+                            return await deepseek_v3_client.generate_structured_content(prompt, config)
+                        else:
+                            return await deepseek_v3_client.generate_content(prompt, config)
+                    except Exception as fallback_error:
+                        logger.error(f"DeepSeek fallback also failed: {fallback_error}", exc_info=True)
+                        # If fallback also fails, raise the original error
+                
+                # Raise ApiCallError after all retries and fallbacks fail
                 raise ApiCallError(f"Gemini API call failed after {max_retries} retries.") from last_exception

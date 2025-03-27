@@ -9,6 +9,16 @@ api:
   max_output_tokens: 8192
   retries: 3 # Number of retries for API calls
 
+# DeepSeek fallback configuration
+deepseek:
+  # API Key for DeepSeek API
+  api_key: DEEPSEEK_API_KEY
+  base_url: https://api.deepseek.com/v1
+  model_name: DeepSeek-V3-0324
+  temperature: 0.6
+  max_tokens: 8192
+  top_p: 1.0
+
 files:
   # Default file paths relative to the hierarchical_planner directory
   default_task: task.txt

@@ -1,5 +1,5 @@
 {
-  "timestamp": 1743079614.411986,
+  "timestamp": 1743079822.681887,
   "goal": "build me an IDE",
   "reasoning_tree": {
     "Phase 1: Requirements Analysis and Architectural Design": {
@@ -634,21 +634,307 @@
           "step 11": "Refactor the file tree component and the backend endpoint code for clarity, efficiency, and adherence to project conventions. Ensure state updates in the frontend are handled correctly (e.g., immutably if using React). Consider adding comments for complex logic."
         }
       ],
-      "Task 2.9: Implement file opening mechanism (load file content into editor instance)": [],
-      "Task 2.10: Implement file saving mechanism (write editor content back to disk)": [],
-      "Task 2.11: Develop UI for managing multiple open files (e.g., tabs)": [],
-      "Task 2.12: Implement workspace/project loading (selecting a root folder)": [],
-      "Task 2.13: Implement create/delete/rename file and folder operations via UI": [],
-      "Task 2.14: Integrate file tree selection to open files in the editor": [],
-      "Task 2.15: Implement visual indicators for unsaved changes in open files": []
+      "Task 2.9: Implement file opening mechanism (load file content into editor instance)": [
+        {
+          "step 1": "Locate or create the primary function/method responsible for initiating the file opening process. This function should accept a file path string as an argument. Assume this logic resides within a `WorkspaceManager` or a similar class managing workspace state and file operations. Let's tentatively name it `WorkspaceManager.open_file(file_path: str)`."
+        },
+        {
+          "step 2": "Implement the file reading logic inside the `WorkspaceManager.open_file` method. Use standard file I/O operations for your chosen language/environment to read the entire content of the file specified by `file_path`. **Hint:** Use a `try...except` block (or equivalent) to gracefully handle potential errors like `FileNotFoundError` and `PermissionError` during file access."
+        },
+        {
+          "step 3": "Retrieve the `EditorManager` instance within `WorkspaceManager.open_file`. Call a method on the `EditorManager` to handle the creation or focusing of an editor tab/instance for the given file path. Pass the successfully read file content and the file path to this method. **Hint:** You might need to define a new method in `EditorManager`, e.g., `EditorManager.create_or_focus_editor(file_path: str, content: str)`."
+        },
+        {
+          "step 4": "Implement the `EditorManager.create_or_focus_editor` method (or the equivalent identified in Step 3). This method should: \n   a. Check if an editor for the given `file_path` is already open. If yes, bring that editor instance into focus.\n   b. If not, request the creation of a new editor instance/tab (using the UI framework's mechanisms).\n   c. Associate the new editor instance with the `file_path`.\n   d. Trigger the loading of the `content` into the newly created or focused editor instance. **Hint:** This might involve calling a method on the specific editor component/widget."
+        },
+        {
+          "step 5": "Implement the content loading mechanism within the editor component itself. Create or modify a method (e.g., `editor_widget.set_content(content: str)`) that takes the file content as a string and displays it in the editor's text area. **Hint:** Depending on the editor library used (e.g., CodeMirror, Monaco, Scintilla, basic Text widget), use its specific API to set the content."
+        },
+        {
+          "step 6": "Enhance error handling in `WorkspaceManager.open_file`. If file reading fails (catching exceptions from Step 2), prevent further processing and display an informative error message to the user. **Hint:** Use the application's status bar, a dedicated notification system, or a simple dialog box to show errors like 'File not found' or 'Permission denied'."
+        },
+        {
+          "step 7": "Integrate the file opening trigger. Locate the code handling user interaction for opening files (e.g., the double-click event handler in the file tree view component, or the action associated with a 'File > Open' menu item). Modify this handler to call the `WorkspaceManager.open_file(selected_file_path)` method, passing the path of the selected file."
+        },
+        {
+          "step 8": "Test the file opening mechanism thoroughly. Try opening various file types, large files, files with different encodings (if supported), non-existent files, and files with restricted permissions to ensure the implementation is robust and error handling works correctly."
+        }
+      ],
+      "Task 2.10: Implement file saving mechanism (write editor content back to disk)": [
+        {
+          "step 1": "Define a new method responsible for saving the content of the currently active editor. Name it `save_active_file` within the appropriate class (e.g., `MainWindow`, `WorkspaceManager`, or `EditorManager`). This method will encapsulate the entire save process."
+        },
+        {
+          "step 2": "Inside `save_active_file`, implement logic to identify the file path associated with the currently active editor tab or widget. Retrieve this path from the application's state or the component managing open files. If no file is active or the active tab doesn't correspond to a file on disk (e.g., a new unsaved file), handle this case appropriately (e.g., by disabling the save action or potentially triggering 'Save As' later - for now, focus on saving existing files)."
+        },
+        {
+          "step 3": "Retrieve the current text content from the active editor widget's text area. Ensure you are getting the complete, up-to-date content."
+        },
+        {
+          "step 4": "Using the file path obtained in step 2 and the content from step 3, implement the file writing operation. Use the standard file I/O library for your language/framework (e.g., Python's `open(filepath, 'w', encoding='utf-8') as f: f.write(content)`, Node.js's `fs.writeFileSync(filepath, content, 'utf-8')`). Ensure you write the file using UTF-8 encoding."
+        },
+        {
+          "step 5": "Wrap the file writing operation (from step 4) within robust error handling blocks (e.g., `try...except` in Python, `try...catch` in JavaScript). Catch potential exceptions like `IOError`, `PermissionError`, `OSError`, etc. Log any errors that occur."
+        },
+        {
+          "step 6": "Implement user feedback for the save operation. If the save is successful, display a confirmation message (e.g., 'File saved successfully.' in the status bar). If an error occurs during saving (caught in step 5), display a user-friendly error message (e.g., 'Error saving file: [reason]' in a dialog box or status bar)."
+        },
+        {
+          "step 7": "Integrate the `save_active_file` method into the user interface. Add a 'Save' option to the 'File' menu and/or a 'Save' button to the toolbar. Connect the action/command triggered by this UI element to call the `save_active_file` method."
+        },
+        {
+          "step 8": "Implement or connect to the existing mechanism for tracking unsaved changes ('dirty' state) for each open file/editor. Ensure that modifying the content in an editor sets its corresponding 'dirty' flag to true."
+        },
+        {
+          "step 9": "Modify the `save_active_file` method: upon successful completion of writing the file to disk, reset the 'dirty' flag for the currently active file/editor to `false`."
+        },
+        {
+          "step 10": "Update the UI elements ('Save' menu item/button): enable them only when the currently active editor has unsaved changes (i.e., its 'dirty' flag is `true`). Disable these UI elements if the active editor has no unsaved changes."
+        },
+        {
+          "step 11": "Add a standard keyboard shortcut for the save action (e.g., Ctrl+S on Windows/Linux, Cmd+S on macOS) and link it to the `save_active_file` method."
+        },
+        {
+          "step 12": "Review and refactor the save implementation for clarity, efficiency, and adherence to project conventions. Ensure error handling is comprehensive and user feedback is clear."
+        }
+      ],
+      "Task 2.11: Develop UI for managing multiple open files (e.g., tabs)": [
+        {
+          "step 1": "Identify the primary UI framework being used for the IDE (e.g., Tkinter, PyQt, Electron/Web). Based on the framework, select the standard widget or component designed for creating tabbed interfaces (e.g., `ttk.Notebook` for Tkinter, `QTabWidget` for PyQt, or a suitable library like `react-tabs` if using React/Electron). Hint: Search the documentation for your chosen UI framework for 'tabs' or 'notebook'."
+        },
+        {
+          "step 2": "Integrate the selected tab widget into the main IDE window layout. Place it in the area where the main content (the editor) will reside. Ensure it resizes correctly with the main window. The core editor component (developed previously) will now be placed *inside* each tab, rather than directly in the main window."
+        },
+        {
+          "step 3": "Define or refine a data structure (e.g., a list of objects or a dictionary mapping file paths to objects) to manage the state of all currently open files. Each entry should store at least: the file's absolute path, a reference to the editor widget instance associated with it, its current modification status (saved/unsaved), and a reference to the corresponding tab in the UI."
+        },
+        {
+          "step 4": "Modify the existing file opening logic (e.g., triggered by 'File > Open' menu action). When a request to open file 'X' comes in: \n   a) Check if file 'X' is already present in your open files data structure. \n   b) If yes, switch the tab widget's active tab to the existing tab for file 'X'. \n   c) If no, proceed to create a new editor instance, load the file content, create a new tab in the tab widget (using the filename as the label), add the editor instance as the content of this new tab, and add a new entry for this file to your open files data structure."
+        },
+        {
+          "step 5": "Implement the event handling logic for when the user switches tabs. When a tab is selected (e.g., via a click), ensure the application context (like status bar information, potentially menu item states) reflects the newly active file and editor. The tab widget itself usually handles showing the correct content pane."
+        },
+        {
+          "step 6": "Configure the tabs to display a close button ('x') on each tab, if supported by the chosen widget. Implement the action triggered by clicking this close button. Hint: Most standard tab widgets provide options for closable tabs and signals/events for when a close button is clicked."
+        },
+        {
+          "step 7": "Implement the detailed logic for closing a tab/file: \n   a) Identify the file associated with the tab being closed. \n   b) Check its modification status in your open files data structure. \n   c) If modified, display a confirmation dialog asking the user to 'Save', 'Don't Save', or 'Cancel'. \n   d) Implement the corresponding actions (trigger save, proceed without saving, or abort the close). \n   e) If the close proceeds (not cancelled), remove the tab from the tab widget UI. \n   f) Remove the file's entry from your open files data structure. \n   g) Consider what to display if the last tab is closed (e.g., a blank state or placeholder message)."
+        },
+        {
+          "step 8": "Implement visual feedback for unsaved changes. Modify the logic so that whenever a file's content is edited (making it 'unsaved'), an indicator (like an asterisk '*') appears on its corresponding tab label. This indicator should be removed when the file is saved. Update the file saving logic to remove the indicator and update the modification status in your data structure."
+        },
+        {
+          "step 9": "Write tests or manually test the tab management functionality: \n   - Open multiple files. \n   - Switch between tabs. \n   - Edit a file, verify the unsaved indicator appears. \n   - Save the file, verify the indicator disappears. \n   - Close an unmodified tab. \n   - Close a modified tab, testing the 'Save', 'Don't Save', and 'Cancel' options. \n   - Try opening a file that is already open in another tab. \n   - Close all tabs."
+        },
+        {
+          "step 10": "Review the implementation for potential improvements. Check if the tab widget handles overflow (many open tabs) gracefully (e.g., by becoming scrollable). Ensure long filenames are handled reasonably well in tab labels (e.g., truncation with ellipsis). Refactor code for clarity and maintainability."
+        }
+      ],
+      "Task 2.12: Implement workspace/project loading (selecting a root folder)": [
+        {
+          "step 1": "Identify the main menu or toolbar component in the UI. Add a new menu item or button labeled 'Open Folder...' or 'Open Workspace...'. This action should trigger the workspace loading process. Ensure this UI element is appropriately placed (e.g., under a 'File' menu)."
+        },
+        {
+          "step 2": "Create an event handler function that will be called when the 'Open Folder...' UI element is activated. This function will orchestrate the process of showing the folder selection dialog."
+        },
+        {
+          "step 3": "Implement the logic to display the native OS folder selection dialog. **Hint:** If using Electron, utilize the `dialog.showOpenDialog` method from the main process. Configure it to allow selecting directories (`properties: ['openDirectory']`)."
+        },
+        {
+          "step 4": "If using Electron or a similar multi-process architecture, set up the necessary Inter-Process Communication (IPC) channels. The renderer process (UI) should send a message to the main process to request opening the dialog, and the main process should send the selected folder path(s) back to the renderer process upon successful selection. **Hint:** Use `ipcMain.handle` and `ipcRenderer.invoke` for request/response patterns."
+        },
+        {
+          "step 5": "In the event handler (or IPC response handler in the renderer process), receive the selected folder path. Handle the case where the user cancels the dialog (the result might be undefined or an empty array). Store the selected path in a central state management system or a dedicated workspace service/module. Let's call this stored path the `workspaceRoot`."
+        },
+        {
+          "step 6": "Modify the existing file explorer/tree view component (or create a placeholder if it doesn't exist yet) to accept the `workspaceRoot` path as input. Trigger a refresh or reload of the file explorer component whenever the `workspaceRoot` state changes."
+        },
+        {
+          "step 7": "Implement the core logic within the file explorer component to read the directory contents based on the provided `workspaceRoot`. **Hint:** If using Node.js (common with Electron), use the `fs.readdir` or `fs.promises.readdir` function to list files and subdirectories. Initially, display only the top-level contents of the selected folder."
+        },
+        {
+          "step 8": "Enhance the directory reading logic to recursively fetch subdirectory contents when a directory node is expanded in the file explorer (lazy loading). Ensure file system errors (e.g., permission denied) are caught and handled gracefully, potentially displaying an error message to the user or marking the affected node in the tree."
+        },
+        {
+          "step 9": "Update the application's window title or another prominent UI area to display the name or path of the currently opened workspace root folder."
+        },
+        {
+          "step 10": "(Optional but Recommended) Implement persistence for the `workspaceRoot`. Store the path of the last opened folder (e.g., using `electron-store`, local storage, or a configuration file). On application startup, attempt to automatically load the last opened workspace if the path is still valid. **Hint:** Check if the path exists before attempting to load it."
+        }
+      ],
+      "Task 2.13: Implement create/delete/rename file and folder operations via UI": [
+        {
+          "step 1": "Backend: Define and implement the API endpoint for creating files and folders. Create a `POST /api/workspace/create` endpoint. It should accept a JSON body containing `path` (the full path relative to the workspace root, e.g., 'src/new_folder' or 'src/new_file.js') and `type` ('file' or 'folder'). Implement the logic to create the corresponding item on the server's filesystem within the designated workspace directory. Return a success status (e.g., 201 Created) or an appropriate error status (e.g., 400 Bad Request for invalid path/type, 409 Conflict if it already exists, 500 Internal Server Error for filesystem errors). Add input validation and basic error handling."
+        },
+        {
+          "step 2": "Backend: Define and implement the API endpoint for deleting files and folders. Create a `DELETE /api/workspace/delete` endpoint. It should accept a JSON body containing `path` (the full path relative to the workspace root). Implement the logic to delete the file or folder (recursively for folders). Return a success status (e.g., 200 OK or 204 No Content) or an error status (e.g., 400 Bad Request for invalid path, 404 Not Found if the path doesn't exist, 500 Internal Server Error). Handle potential filesystem errors."
+        },
+        {
+          "step 3": "Backend: Define and implement the API endpoint for renaming files and folders. Create a `PUT /api/workspace/rename` endpoint. It should accept a JSON body containing `oldPath` and `newPath` (both relative to the workspace root). Implement the logic to rename the file or folder. Return a success status (e.g., 200 OK) or an error status (e.g., 400 Bad Request for invalid paths, 404 Not Found for `oldPath`, 409 Conflict if `newPath` already exists, 500 Internal Server Error). Handle potential filesystem errors."
+        },
+        {
+          "step 4": "Backend: Implement security checks for all new filesystem API endpoints (`/create`, `/delete`, `/rename`). Ensure that all path manipulations strictly prevent path traversal attacks (e.g., using `../../..`) and confine operations *only* within the intended workspace directory configured for the project. Sanitize and validate all path inputs rigorously. Hint: Use path joining functions from your language's standard library (like `path.join` in Node.js or `os.path.join` in Python) after resolving and validating the base workspace path and the relative user input path."
+        },
+        {
+          "step 5": "Frontend: Enhance the file tree component (assuming one exists from previous steps) to include a context menu (right-click menu). Add menu items: 'New File', 'New Folder', 'Rename', 'Delete'. Hint: You might use a library like `react-contextmenu` or implement a custom one. The availability of 'Rename' and 'Delete' should depend on whether a file/folder node is selected."
+        },
+        {
+          "step 6": "Frontend: Implement the UI interaction for 'New File' and 'New Folder'. When clicked: a) If a folder node is selected, prompt the user for a name (e.g., using a modal or an inline input field within the tree under the selected folder). If no node or a file node is selected, prompt for a name within the root or the parent directory of the file. b) Construct the full `path` based on user input and the selected node's path. c) Send a request to the `POST /api/workspace/create` backend endpoint with the `path` and `type`. d) On success, update the file tree UI to show the new item. e) Display user feedback (e.g., toast notification) for success or failure. Handle API errors gracefully."
+        },
+        {
+          "step 7": "Frontend: Implement the UI interaction for 'Delete'. When clicked on a selected node: a) Display a confirmation dialog (e.g., 'Are you sure you want to delete [item name]? This action cannot be undone.'). b) If confirmed, send a request to the `DELETE /api/workspace/delete` backend endpoint with the `path` of the selected node. c) On success, update the file tree UI by removing the node. d) Display user feedback for success or failure. Handle API errors."
+        },
+        {
+          "step 8": "Frontend: Implement the UI interaction for 'Rename'. When clicked on a selected node: a) Prompt the user for the new name (e.g., using a modal or an inline input field within the tree, pre-filled with the current name). b) Construct the `newPath` based on user input and the node's parent path. c) Send a request to the `PUT /api/workspace/rename` backend endpoint with the `oldPath` (from the selected node) and the calculated `newPath`. d) On success, update the file tree UI by renaming the node. e) Display user feedback for success or failure. Handle API errors."
+        },
+        {
+          "step 9": "Frontend: Refine file tree state management. Ensure that after create, delete, or rename operations succeed, the internal state representing the file tree is updated correctly and efficiently, triggering a re-render of the tree component without requiring a full refresh of the workspace data from the backend, if possible. Ensure parent folders' children arrays are updated correctly."
+        },
+        {
+          "step 10": "Testing: Write integration tests for the frontend interactions. Simulate user actions (right-clicking, selecting menu items, entering names, confirming deletion) and verify that the correct API calls are made and the UI (mocked or actual) updates as expected. Test edge cases like invalid names, attempting to delete the root, etc."
+        },
+        {
+          "step 11": "Backend Testing: Write unit or integration tests for the `/create`, `/delete`, and `/rename` API endpoints. Cover success scenarios, various error conditions (path already exists, path not found, invalid input, permission errors - if mockable), and the security checks for path traversal."
+        }
+      ],
+      "Task 2.14: Integrate file tree selection to open files in the editor": [
+        {
+          "step 1": "Locate the file tree component implementation (e.g., the component using `react-arborist` or a similar library). Identify the specific prop or mechanism used by the file tree library to signal when a node (file or directory) is selected or activated (e.g., `onSelect`, `onActivate`, `onDoubleClick`, node event handlers). Document the event name and the structure of the data it provides, especially how to identify the node type (file/directory) and its path or identifier."
+        },
+        {
+          "step 2": "Create a new event handler function (e.g., `handleFileSelect`, `onNodeActivate`) within the component that renders the file tree, or in a relevant parent component managing workspace state. This function will receive the event data from the file tree component upon node selection/activation."
+        },
+        {
+          "step 3": "Inside the event handler created in Step 2, add logic to check if the selected/activated node represents a file, not a directory. Use the node data provided by the file tree event. If it's a directory, the handler should typically do nothing for the purpose of opening a file in the editor (directory expansion might be handled elsewhere)."
+        },
+        {
+          "step 4": "If the selected node is a file, extract its unique identifier, which should correspond to its full path or a unique ID that can be resolved to a path. Prepare this identifier to be used for fetching the file's content."
+        },
+        {
+          "step 5": "Define or update an asynchronous function (e.g., `fetchFileContent(filePath: string): Promise<string>`) responsible for retrieving the content of a file given its path/identifier. This function will likely need to interact with the backend API or filesystem API (if using Electron/Tauri) established in previous steps. Implement basic error handling within this function (e.g., file not found, permission errors)."
+        },
+        {
+          "step 6": "Modify the event handler (from Step 3) to call the `fetchFileContent` function (from Step 5) with the file path/identifier when a file node is selected/activated. Use `async/await` to handle the promise."
+        },
+        {
+          "step 7": "Integrate with the application's state management (e.g., Redux, Zustand, Context API). Upon successfully fetching the file content: dispatch an action or update the state to: \n   a) Add the file (path, content, possibly metadata like language) to the list of 'open files', if not already present. \n   b) Set the newly selected/opened file as the 'active editor tab'. \n   c) Store the fetched content associated with this file in the state. \n   Hint: Ensure your state structure can accommodate multiple open files and track the active one."
+        },
+        {
+          "step 8": "Connect the event handler function (from Step 2-7) to the file tree component using the prop identified in Step 1 (e.g., `<FileTreeComponent onActivate={handleFileSelect} />`)."
+        },
+        {
+          "step 9": "Verify that the main editor component (e.g., the one using Monaco Editor or CodeMirror) is correctly subscribing to the relevant parts of the application state (i.e., the active file identifier and the content of the open files). Ensure that when the 'active editor tab' state changes, the editor component updates to display the content of the corresponding file."
+        },
+        {
+          "step 10": "Enhance error handling. If `fetchFileContent` fails (e.g., file not readable), prevent state updates that would lead to an inconsistent UI. Implement user feedback for errors, such as displaying a notification (using a toast library) or updating a status bar message."
+        },
+        {
+          "step 11": "Manually test the integration thoroughly: \n   a) Click/double-click files in the tree and verify they open in the editor. \n   b) Open multiple files. \n   c) Click a file that is already open; verify it becomes the active tab without refetching if content is already loaded. \n   d) Click directories; verify they do not attempt to open as files in the editor. \n   e) Test with files that might cause read errors (if possible to simulate)."
+        }
+      ],
+      "Task 2.15: Implement visual indicators for unsaved changes in open files": [
+        {
+          "step 1": "Locate the data structure or class responsible for managing the state of currently open files (e.g., `OpenFile`, `DocumentState`, `FileBuffer`, or similar within your project structure). Add a boolean attribute named `is_dirty` to this structure/class, initialized to `False`. Ensure this attribute exists for each open file representation."
+        },
+        {
+          "step 2": "Identify the mechanism used to detect content modifications within the core editor component (e.g., a signal like `textChanged` in PyQt/PySide, an event like `<<Modified>>` virtual event in Tkinter, or an `onDidChangeContent` listener in Monaco/CodeMirror). In the event handler or callback function triggered by content changes, retrieve the state object for the currently active file and set its `is_dirty` attribute to `True`. Hint: Ensure this handler correctly identifies the active document/file state and avoids setting the flag during initial file loading if the change event fires then."
+        },
+        {
+          "step 3": "Create or update a function responsible for visually representing the state of an open file in the UI (e.g., in the file tab bar or a sidebar list). This function should take the file's state object (including `is_dirty`) as input. Modify it to append a visual indicator (e.g., an asterisk `*` or a dot `\u2022`) to the file's displayed name or change the style/icon of the tab/list item if `is_dirty` is `True`. Remove the indicator or revert the style if `is_dirty` is `False`. Hint: Consider naming this function `update_file_display(file_state)` or similar."
+        },
+        {
+          "step 4": "Modify the event handler from Step 2. After setting `is_dirty = True`, call the UI update function (created in Step 3) to immediately reflect the change visually for the modified file. Pass the updated file state object to this function."
+        },
+        {
+          "step 5": "Locate the function or method responsible for saving the content of an open file. Within this function, *after* the file has been successfully written to disk, update the corresponding file's state object by setting its `is_dirty` attribute back to `False`. Immediately afterward, call the UI update function (from Step 3) to remove the visual 'dirty' indicator for that file."
+        },
+        {
+          "step 6": "Update the logic responsible for opening and loading files. Ensure that when a file is initially loaded, its `is_dirty` flag is explicitly set to `False`, and the UI update function (from Step 3) is called to ensure the file initially appears without the 'unsaved' indicator."
+        },
+        {
+          "step 7": "Review and test the implementation thoroughly. Manually test opening, modifying, saving, re-modifying files, and switching between multiple open files (some saved, some unsaved) to ensure the visual indicators behave correctly and consistently. Consider adding automated tests if your testing framework allows for UI state verification or if you can unit test the state management logic independently."
+        }
+      ]
     },
-    "Phase 3: Language Support and Intelligence Features (Syntax Highlighting, Completion, Linting)": {},
+    "Phase 3: Language Support and Intelligence Features (Syntax Highlighting, Completion, Linting)": {
+      "Task 3.1: Research and select syntax highlighting library/engine (e.g., TextMate grammars, Tree-sitter).": [
+        {
+          "step 1": "Define the key criteria for evaluating syntax highlighting libraries/engines for our IDE project. Consider factors like: performance (especially on large files), accuracy of highlighting, breadth of language support, ease of adding new languages, integration complexity with our potential tech stack (mention the stack if defined, otherwise assume a common one like Electron or Python GUI), community support/maintenance, and whether the engine supports related features (e.g., code folding, structural queries)."
+        },
+        {
+          "step 2": "Search the web to identify popular and relevant syntax highlighting libraries or engines suitable for integration into a custom-built IDE. List at least 3-5 potential candidates. Hint: Include well-known approaches like TextMate grammars (and libraries that process them) and Tree-sitter. Also consider libraries specific to potential implementation languages (e.g., Pygments for Python)."
+        },
+        {
+          "step 3": "Perform detailed research on using TextMate grammars for syntax highlighting. Investigate: how they work (regex-based), the format (.tmLanguage, JSON/PList), available libraries for parsing these grammars (e.g., `vscode-textmate` for JS/TS, `oniguruma` regex engine dependency), pros (vast existing grammar library), and cons (potential performance issues, regex limitations for complex syntax, state machine complexity)."
+        },
+        {
+          "step 4": "Perform detailed research on the Tree-sitter parsing framework for syntax highlighting. Investigate: how it works (parser generator, concrete syntax trees), grammar definition, available language bindings (JS, Python, Rust, etc.), pros (speed, incremental parsing, accuracy, ability to use the syntax tree for more features), and cons (may require compiling WASM or native modules, potentially fewer pre-built grammars than TextMate, grammar development complexity)."
+        },
+        {
+          "step 5": "Briefly research one or two other candidates identified in Step 2 (e.g., Pygments, Scintilla's highlighting component). Focus specifically on their suitability for *real-time* highlighting within an editor component, not just static code formatting. Note their core mechanisms, pros, and cons in this specific context."
+        },
+        {
+          "step 6": "Create a comparative summary (e.g., a markdown table) of the primary candidates researched (focus on TextMate grammars and Tree-sitter, include others if they seem viable). Compare them against the criteria established in Step 1 (Performance, Accuracy, Language Support, Integration, Ecosystem, Advanced Features)."
+        },
+        {
+          "step 7": "Analyze the integration effort for the top 2 candidates (likely TextMate and Tree-sitter) based on our project's likely architecture. If the UI framework or language is decided, reference that. If not, discuss integration patterns for common scenarios (e.g., Electron/Web-based editor, Python Qt/Tkinter editor). Consider dependencies and build process complexities."
+        },
+        {
+          "step 8": "Based on the research and comparison, recommend one syntax highlighting approach (TextMate grammars or Tree-sitter) for the IDE project. Justify the recommendation by weighing the pros and cons against the likely requirements of a modern IDE, considering both immediate highlighting needs and potential future features (like code navigation, refactoring intelligence)."
+        },
+        {
+          "step 9": "Update the project's design documentation (e.g., `DESIGN_DOC.md` or a dedicated section) to record the research findings, the comparison table, the final decision on the syntax highlighting engine, and the justification for this choice."
+        }
+      ],
+      "Task 3.2: Integrate selected highlighting engine with the text editor component.": [
+        {
+          "step 1": "Locate the source file containing the main text editor component implementation. Identify the specific widget used for text editing (e.g., `tkinter.Text`, `QTextEdit`, CodeMirror instance, Monaco Editor instance). Also, recall or locate the configuration specifying the chosen syntax highlighting engine/library from Task 3.1 (e.g., Pygments, highlight.js, Prism.js, built-in editor features)."
+        },
+        {
+          "step 2": "Import the necessary modules or components from the selected syntax highlighting library into the text editor component's file. Hint: If using Pygments with Tkinter, you might need `from pygments import highlight`, `from pygments.lexers import get_lexer_by_name`, `from pygments.formatters import Formatter`, and potentially `tkinter.font`."
+        },
+        {
+          "step 3": "Define the necessary styles or themes for syntax highlighting. Hint: If using Tkinter with Pygments, define `tkinter.Text` tags corresponding to Pygments token types (e.g., `Token.Keyword`, `Token.Name.Function`, `Token.String`, `Token.Comment`). Configure these tags with appropriate foreground colors and font styles (bold, italic). You might create a default theme or plan for theme loading later. If using a web editor, this might involve loading a CSS theme file associated with the highlighter."
+        },
+        {
+          "step 4": "Create a core function responsible for applying syntax highlighting to the text editor's content. This function should: a) Get the current text content. b) Select the appropriate lexer/language mode based on the file type (initially, you can hardcode a language like Python for testing). c) Use the highlighting library to process the text and generate styled tokens/ranges. d) Map these tokens/ranges to the styles/tags defined in the previous step. e) Apply the styles/tags to the corresponding text ranges within the editor widget, ensuring previous highlighting is cleared first. Hint: For Tkinter/Pygments, you'll iterate through tokens from `pygments.lex`, get start/end indices, and apply the corresponding Tkinter tag using `text_widget.tag_add` and `text_widget.tag_remove`."
+        },
+        {
+          "step 5": "Identify the appropriate event(s) triggered by the text editor widget when its content is modified (e.g., key press, text insertion/deletion). Hint: For `tkinter.Text`, the `<<Modified>>` virtual event is often used, but requires careful handling of its flag. For web editors like CodeMirror/Monaco, look for events like `onChange` or `onDidChangeModelContent`."
+        },
+        {
+          "step 6": "Implement an event handler function that calls the core highlighting function created in Step 4. This handler should be triggered by the event(s) identified in Step 5. Hint: To prevent performance issues and potential infinite loops (especially with Tkinter's `<<Modified>>`), consider techniques like debouncing the handler (only executing after a short pause in typing) or optimizing the highlighting logic (see Step 9). For Tkinter's `<<Modified>>`, remember to reset the `modified` flag within the handler using `text_widget.edit_modified(False)`."
+        },
+        {
+          "step 7": "Bind the event handler function (from Step 6) to the text editor widget's modification event(s) (identified in Step 5)."
+        },
+        {
+          "step 8": "Ensure that syntax highlighting is applied not only on modification but also when a file's content is initially loaded into the editor. Modify the file loading logic to call the core highlighting function after setting the editor's content."
+        },
+        {
+          "step 9": "Test the syntax highlighting integration thoroughly. Load sample files of the initially supported language (e.g., Python). Type new code, delete code, paste code, and ensure highlighting updates correctly and reasonably quickly. Check different token types (keywords, strings, comments, numbers, functions, classes)."
+        },
+        {
+          "step 10": "Review the implementation for potential performance bottlenecks, especially with large files. Hint: If highlighting is slow, research and consider implementing optimizations such as: a) Incremental highlighting (only re-highlighting changed lines or regions). b) Debouncing the update trigger. c) For desktop toolkits, potentially running the highlighting process in a separate thread if it's blocking the UI. Search for 'optimize syntax highlighting [Your Editor Widget]' or '[Your Highlighting Library] performance'."
+        }
+      ],
+      "Task 3.3: Implement loading and management of language grammars/definitions.": [],
+      "Task 3.4: Implement token-to-style mapping based on configurable themes.": [],
+      "Task 3.5: Design and implement the code completion suggestion UI popup.": [],
+      "Task 3.6: Implement basic completion provider (e.g., keywords, current buffer words).": [],
+      "Task 3.7: Research and implement Language Server Protocol (LSP) client basics.": [],
+      "Task 3.8: Integrate LSP for advanced code completion suggestions.": [],
+      "Task 3.9: Implement UI elements for displaying linting/diagnostic feedback (e.g., underlines, gutter markers, problems panel).": [],
+      "Task 3.10: Integrate LSP or specific linters for code diagnostics/linting for at least one language.": [],
+      "Task 3.11: Define internal APIs/extension points for language feature providers.": [],
+      "Task 3.12: Implement triggering logic for completion (e.g., on specific characters) and linting (e.g., on save, on type delay).": []
+    },
     "Phase 4: Build, Run, and Debug Integration": {},
     "Phase 5: Version Control Integration": {},
     "Phase 6: Extensibility and Plugin System Development (Optional but common)": {},
     "Phase 7: Testing, Performance Optimization, and Refinement": {},
     "Phase 8: Packaging, Documentation, and Release": {}
   },
-  "last_processed_phase": "Phase 2: Core Editor and Workspace Implementation",
-  "last_processed_task": "Task 2.8: Implement logic to read and display directory structures in the file tree"
+  "last_processed_phase": "Phase 3: Language Support and Intelligence Features (Syntax Highlighting, Completion, Linting)",
+  "last_processed_task": "Task 3.2: Integrate selected highlighting engine with the text editor component."
 }

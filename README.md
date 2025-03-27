@@ -48,7 +48,7 @@ gemini/
 1.  **Clone the repository:**
     ```bash
     # Replace with the actual repository URL if applicable
-    git clone https://github.com/yourusername/gemini.git
+    git clone https://github.com/justinlietz93/hierarchical_reasoning_generator.git
     cd gemini
     ```
 

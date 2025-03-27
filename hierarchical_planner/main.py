@@ -15,7 +15,7 @@ import os
 import argparse
 import logging
 import sys
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Local imports
 # Note: gemini_client functions now require config passed in
@@ -25,6 +25,7 @@ from .gemini_client import generate_structured_content, generate_content, call_g
 from .qa_validator import run_validation as run_qa_validation
 from .config_loader import load_config # ConfigError is now in exceptions
 from .logger_setup import setup_logging # Added
+from .checkpoint_manager import CheckpointManager # Import the checkpoint manager
 # Import custom exceptions
 from .exceptions import (
     HierarchicalPlannerError, ConfigError, FileProcessingError,
@@ -128,7 +129,7 @@ Example:
 
 # --- Main Logic ---
 
-async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]) -> tuple[dict | None, str | None]:
+async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any], resume: bool = True) -> tuple[dict | None, str | None]:
     """
     Generates the hierarchical plan (Phases, Tasks, Steps) using Gemini.
 
@@ -140,6 +141,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
         task_file: Absolute path to the input file containing the high-level goal.
         output_file: Absolute path to save the generated JSON plan.
         config: The application configuration dictionary.
+        resume: Whether to attempt to resume from a checkpoint if available.
 
     Returns:
         A tuple containing:
@@ -155,106 +157,245 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
         JsonSerializationError: If the generated plan cannot be serialized to JSON.
     """
     logger.info("Starting hierarchical planning process...")
-    goal: str | None = None # Initialize goal
+    
+    # Initialize checkpoint manager
+    checkpoint_manager = CheckpointManager()
+    checkpoint_path = ""
+    
+    goal: str | None = None
+    reasoning_tree = {}
+    last_processed_phase = None
+    last_processed_task = None
 
     # 1. Read Goal
     try:
-        # Ensure task_file path is absolute or correctly relative (config_loader handles this)
         logger.info(f"Reading goal from: {task_file}")
         with open(task_file, 'r', encoding='utf-8') as f:
             goal = f.read().strip()
         if not goal:
             logger.error(f"Task file '{task_file}' is empty.")
-            raise FileReadError(f"Task file '{task_file}' is empty.") # Raise custom exception
-        logger.info(f"Goal read successfully: '{goal[:100]}...'") # Log truncated goal
-    except FileNotFoundError: # Catch built-in error
+            raise FileReadError(f"Task file '{task_file}' is empty.")
+        logger.info(f"Goal read successfully: '{goal[:100]}...'")
+    except FileNotFoundError:
         logger.error(f"Task file '{task_file}' not found.")
-        raise PlannerFileNotFoundError(f"Task file '{task_file}' not found.") from None # Raise custom exception
+        raise PlannerFileNotFoundError(f"Task file '{task_file}' not found.")
     except IOError as e:
         logger.error(f"Error reading task file '{task_file}': {e}", exc_info=True)
-        raise FileReadError(f"Error reading task file '{task_file}': {e}") from e # Raise custom exception
+        raise FileReadError(f"Error reading task file '{task_file}': {e}")
 
-
-    reasoning_tree = {}
-    # script_dir = os.path.dirname(__file__) or '.' # No longer needed for output path resolution
-
+    # 2. Check for an existing checkpoint if resume is enabled
+    if resume:
+        logger.info("Checking for existing checkpoints to resume from...")
+        checkpoint_data, checkpoint_path = checkpoint_manager.find_latest_generation_checkpoint(goal)
+        
+        if checkpoint_data:
+            # Resume from checkpoint
+            logger.info(f"Resuming from checkpoint: {checkpoint_path}")
+            reasoning_tree = checkpoint_data.get("reasoning_tree", {})
+            last_processed_phase = checkpoint_data.get("last_processed_phase")
+            last_processed_task = checkpoint_data.get("last_processed_task")
+            
+            if reasoning_tree:
+                logger.info(f"Restored checkpoint with {len(reasoning_tree)} phases")
+                # If we have phases already and no last_processed_phase, we've completed phase generation
+                if not last_processed_phase and reasoning_tree:
+                    # Get the last phase we'll process next
+                    phases = list(reasoning_tree.keys())
+                    if phases:
+                        last_processed_phase = phases[-1]  # Start with the first phase
+                        logger.info(f"Will resume by processing tasks for phase: {last_processed_phase}")
+    
     try:
-        # 2. Generate Phases
-        logger.info("Generating phases...")
-        phase_context = {"goal": goal}
-        # Pass config to retry function (now imported from gemini_client)
-        # Catch potential API errors from retry function
-        phase_response = await call_gemini_with_retry(PHASE_GENERATION_PROMPT, phase_context, config)
-        phases = phase_response.get("phases", [])
-        if not phases:
-            logger.error("Could not generate phases from Gemini response.")
-            raise PlanGenerationError("Failed to generate phases from Gemini.") # Raise custom exception
-        logger.info(f"Generated {len(phases)} phases.")
+        # 3. Generate Phases if we don't have them
+        if not reasoning_tree:
+            logger.info("Generating phases...")
+            phase_context = {"goal": goal}
+            phase_response = await call_gemini_with_retry(PHASE_GENERATION_PROMPT, phase_context, config)
+            phases = phase_response.get("phases", [])
+            
+            if not phases:
+                logger.error("Could not generate phases from Gemini response.")
+                raise PlanGenerationError("Failed to generate phases from Gemini.")
+            
+            logger.info(f"Generated {len(phases)} phases.")
+            
+            # Initialize reasoning tree with empty entries for each phase
+            reasoning_tree = {phase: {} for phase in phases}
+            
+            # Save checkpoint after phase generation
+            checkpoint_path = checkpoint_manager.save_generation_checkpoint(
+                goal=goal, 
+                current_state=reasoning_tree,
+                last_processed_phase=None,  # We haven't started processing tasks yet
+                last_processed_task=None
+            )
 
-    except ApiCallError as e:
-        # Handle API call failures specifically if needed, or let it propagate
-        logger.error(f"API call failed during phase generation: {e}", exc_info=True)
-        raise # Re-raise to be caught by main_workflow or main block
-
-    # --- Generation Loop (Tasks and Steps) ---
-    # Wrap the loop in a try block to catch errors during task/step generation
-    try:
-        # 3. Generate Tasks for each Phase
-        for phase in phases:
-            logger.info(f"Generating tasks for Phase: {phase}")
-            task_context = {"goal": goal, "phase": phase}
-            # Pass config to retry function
-            task_response = await call_gemini_with_retry(TASK_GENERATION_PROMPT, task_context, config)
-            tasks = task_response.get("tasks", [])
-            if not tasks:
-                logger.warning(f"Could not generate tasks for phase '{phase}'. Skipping.")
-                reasoning_tree[phase] = {} # Add phase even if no tasks generated
+        # 4. Generate Tasks for each Phase and Steps for each Task
+        phases = list(reasoning_tree.keys())
+        
+        # Determine where to start based on checkpoint
+        start_phase_idx = 0
+        if last_processed_phase:
+            try:
+                # Find the index of the last processed phase
+                start_phase_idx = phases.index(last_processed_phase)
+                
+                # If we have a last_processed_task and it exists in the current phase's tasks,
+                # we need to continue from the next task
+                if last_processed_task and last_processed_task in reasoning_tree[last_processed_phase]:
+                    # Continue from next phase since we completed all tasks in this phase
+                    start_phase_idx += 1
+            except ValueError:
+                # Phase not found, start from beginning
+                logger.warning(f"Last processed phase '{last_processed_phase}' not found in phases, starting from beginning")
+                start_phase_idx = 0
+        
+        for phase_idx in range(start_phase_idx, len(phases)):
+            phase = phases[phase_idx]
+            logger.info(f"Processing Phase: {phase} [{phase_idx + 1}/{len(phases)}]")
+            
+            # Skip if we already have tasks for this phase
+            if reasoning_tree[phase] and all(isinstance(reasoning_tree[phase][task], list) for task in reasoning_tree[phase]):
+                logger.info(f"Skipping phase '{phase}' as it already has complete tasks with steps")
                 continue
-            logger.info(f"Generated {len(tasks)} tasks for this phase.")
-            reasoning_tree[phase] = {}
-
-            # 4. Generate Steps for each Task
-            for task in tasks:
+            
+            # Generate tasks for this phase if needed
+            if not reasoning_tree[phase]:
+                logger.info(f"Generating tasks for Phase: {phase}")
+                task_context = {"goal": goal, "phase": phase}
+                task_response = await call_gemini_with_retry(TASK_GENERATION_PROMPT, task_context, config)
+                tasks = task_response.get("tasks", [])
+                
+                if not tasks:
+                    logger.warning(f"No tasks generated for phase '{phase}'. Continuing to next phase.")
+                    # Create an empty dict for the phase
+                    reasoning_tree[phase] = {}
+                    # Save checkpoint after attempting task generation
+                    checkpoint_path = checkpoint_manager.save_generation_checkpoint(
+                        goal=goal, 
+                        current_state=reasoning_tree,
+                        last_processed_phase=phase,
+                        last_processed_task=None
+                    )
+                    continue
+                
+                logger.info(f"Generated {len(tasks)} tasks for phase '{phase}'")
+                # Initialize each task with an empty list to be filled with steps
+                reasoning_tree[phase] = {task: [] for task in tasks}
+                
+                # Save checkpoint after task generation
+                checkpoint_path = checkpoint_manager.save_generation_checkpoint(
+                    goal=goal, 
+                    current_state=reasoning_tree,
+                    last_processed_phase=phase,
+                    last_processed_task=None
+                )
+            
+            # Generate steps for each task in this phase
+            tasks = list(reasoning_tree[phase].keys())
+            
+            # Determine where to start for tasks based on checkpoint
+            start_task_idx = 0
+            if phase == last_processed_phase and last_processed_task:
+                try:
+                    # Find the index of the last processed task
+                    start_task_idx = tasks.index(last_processed_task) + 1  # Start from the next task
+                    if start_task_idx >= len(tasks):
+                        # If we've processed all tasks in this phase, continue to the next phase
+                        logger.info(f"All tasks in phase '{phase}' already processed")
+                        continue
+                except ValueError:
+                    # Task not found, start from beginning of this phase
+                    logger.warning(f"Last processed task '{last_processed_task}' not found in phase '{phase}', starting from first task")
+                    start_task_idx = 0
+            
+            for task_idx in range(start_task_idx, len(tasks)):
+                task = tasks[task_idx]
+                logger.info(f"  Processing Task: {task} [{task_idx + 1}/{len(tasks)}]")
+                
+                # Skip if we already have steps for this task
+                if reasoning_tree[phase][task]:
+                    logger.info(f"  Skipping task '{task}' as it already has steps")
+                    continue
+                
+                # Generate steps for this task
                 logger.info(f"  Generating steps for Task: {task}")
                 step_context = {"goal": goal, "phase": phase, "task": task}
-                # Pass config to retry function
-                step_response = await call_gemini_with_retry(STEP_GENERATION_PROMPT, step_context, config)
-                steps = step_response.get("steps", [])
-                if not steps:
-                     logger.warning(f"Could not generate steps for task '{task}'. Skipping.")
-                     reasoning_tree[phase][task] = [] # Add task even if no steps generated
-                     continue
-                logger.info(f"  Generated {len(steps)} steps for this task.")
-                reasoning_tree[phase][task] = steps
-
+                
+                try:
+                    step_response = await call_gemini_with_retry(STEP_GENERATION_PROMPT, step_context, config)
+                    steps = step_response.get("steps", [])
+                    
+                    if not steps:
+                        logger.warning(f"No steps generated for task '{task}' in phase '{phase}'. Continuing to next task.")
+                        # Initialize with empty list to mark as processed
+                        reasoning_tree[phase][task] = []
+                    else:
+                        logger.info(f"  Generated {len(steps)} steps for task '{task}'")
+                        reasoning_tree[phase][task] = steps
+                except Exception as e:
+                    logger.error(f"Error generating steps for task '{task}': {e}", exc_info=True)
+                    # Mark the task as having an error by storing a special error indicator
+                    reasoning_tree[phase][task] = [{"error": f"Failed to generate steps: {str(e)}"}]
+                
+                # Save checkpoint after processing each task
+                checkpoint_path = checkpoint_manager.save_generation_checkpoint(
+                    goal=goal, 
+                    current_state=reasoning_tree,
+                    last_processed_phase=phase,
+                    last_processed_task=task
+                )
+        
         # 5. Write Output JSON
-        # Output path is now absolute, resolved by config_loader
-        logger.info(f"Writing initial reasoning tree to {output_file}...")
+        logger.info(f"Writing reasoning tree to {output_file}...")
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
-                # Correct indentation for json.dump
                 json.dump(reasoning_tree, f, indent=2, ensure_ascii=False)
-            logger.info("Initial planning process completed successfully.")
+            logger.info("Planning process completed successfully.")
+            
+            # Delete checkpoint since we completed successfully
+            if checkpoint_path:
+                checkpoint_manager.delete_checkpoint(checkpoint_path)
         except IOError as e:
             logger.error(f"Error writing output file '{output_file}': {e}", exc_info=True)
-            raise FileWriteError(f"Error writing output file '{output_file}': {e}") from e # Raise custom exception
+            raise FileWriteError(f"Error writing output file '{output_file}': {e}")
         except TypeError as e:
-             logger.error(f"Error serializing reasoning tree to JSON: {e}", exc_info=True)
-             raise JsonSerializationError(f"Error serializing reasoning tree to JSON: {e}") from e # Raise custom exception
-
-        return reasoning_tree, goal # Return the generated tree and goal
+            logger.error(f"Error serializing reasoning tree to JSON: {e}", exc_info=True)
+            raise JsonSerializationError(f"Error serializing reasoning tree to JSON: {e}")
+        
+        return reasoning_tree, goal
 
     except ApiCallError as e:
-         # Catch API errors during task/step generation
-        logger.error(f"API call failed during task/step generation: {e}", exc_info=True)
-        raise # Re-raise
+        logger.error(f"API call failed during generation: {e}", exc_info=True)
+        
+        # Save our progress so far
+        if reasoning_tree and goal:
+            checkpoint_path = checkpoint_manager.save_generation_checkpoint(
+                goal=goal, 
+                current_state=reasoning_tree,
+                last_processed_phase=last_processed_phase,
+                last_processed_task=last_processed_task
+            )
+            logger.info(f"Progress saved to checkpoint: {checkpoint_path}")
+        
+        raise
     except Exception as e:
-        # Catch other unexpected errors during generation loop
-        logger.error(f"An unexpected error occurred during plan generation loop: {e}", exc_info=True)
-        raise PlanGenerationError(f"An unexpected error occurred during plan generation loop: {e}") from e
+        logger.error(f"An unexpected error occurred during plan generation: {e}", exc_info=True)
+        
+        # Save our progress so far
+        if reasoning_tree and goal:
+            checkpoint_path = checkpoint_manager.save_generation_checkpoint(
+                goal=goal, 
+                current_state=reasoning_tree,
+                last_processed_phase=last_processed_phase,
+                last_processed_task=last_processed_task
+            )
+            logger.info(f"Progress saved to checkpoint: {checkpoint_path}")
+        
+        raise PlanGenerationError(f"An unexpected error occurred during plan generation: {e}") from e
 
 
-async def main_workflow(task_file: str, output_file: str, validated_output_file: str, skip_qa: bool, config: Dict[str, Any]):
+async def main_workflow(task_file: str, output_file: str, validated_output_file: str, skip_qa: bool, config: Dict[str, Any], skip_resume: bool = False):
     """
     Orchestrates the full application workflow.
 
@@ -268,13 +409,18 @@ async def main_workflow(task_file: str, output_file: str, validated_output_file:
         validated_output_file: Absolute path for the validated/annotated plan JSON.
         skip_qa: Boolean flag to skip the QA validation step.
         config: The application configuration dictionary.
+        skip_resume: Boolean flag to skip resuming from checkpoints.
     """
     reasoning_tree: dict | None = None
     goal: str | None = None
     try:
         # Step 1: Generate the initial plan
-        reasoning_tree, goal = await generate_plan(task_file, output_file, config)
-        # generate_plan now raises exceptions on failure, so no need to check for None
+        reasoning_tree, goal = await generate_plan(
+            task_file=task_file, 
+            output_file=output_file, 
+            config=config,
+            resume=not skip_resume
+        )
 
         # Step 2: Run QA Validation (if not skipped)
         if not skip_qa:
@@ -284,8 +430,13 @@ async def main_workflow(task_file: str, output_file: str, validated_output_file:
                  logger.error("Goal is missing, cannot run QA validation.")
                  raise PlanValidationError("Goal is missing, cannot run QA validation.")
 
-            # Pass config down to QA validation function
-            await run_qa_validation(input_path=output_file, output_path=validated_output_file, config=config)
+            # Pass config down to QA validation function, including resume flag
+            await run_qa_validation(
+                input_path=output_file, 
+                output_path=validated_output_file, 
+                config=config,
+                resume=not skip_resume
+            )
             logger.info("--- QA Validation Step Completed ---")
         else:
             logger.info("--- Skipping QA Validation Step ---")
@@ -311,8 +462,6 @@ async def main_workflow(task_file: str, output_file: str, validated_output_file:
     except Exception as e:
         # Catch unexpected errors
         logger.critical(f"An unexpected error occurred in the main workflow: {e}", exc_info=True)
-
-    # Removed duplicated main_workflow definition and redundant checks/logging
 
 
 if __name__ == "__main__":
@@ -348,14 +497,15 @@ if __name__ == "__main__":
         action="store_true",
         help="Skip the QA validation and annotation step."
     )
-    # TODO: Add arguments to override config settings like model, temperature, log level?
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Don't resume from checkpoints if they exist."
+    )
 
     args = parser.parse_args()
 
-    # API key check is now handled by config_loader, remove old check
-
     # Run the main workflow, passing resolved paths from args
-    # Config is already loaded globally as CONFIG
     try:
         logger.info("Starting main workflow...")
         asyncio.run(main_workflow(
@@ -363,13 +513,12 @@ if __name__ == "__main__":
             output_file=args.output_file,
             validated_output_file=args.validated_output_file,
             skip_qa=args.skip_qa,
-            config=CONFIG # Pass global config
+            config=CONFIG,
+            skip_resume=args.no_resume
         ))
     except HierarchicalPlannerError as e:
-        # Catch known application errors that might have been missed in main_workflow
         logger.critical(f"Application error at top level: {e}", exc_info=True)
         sys.exit(1)
     except Exception as e:
-        # Catch any truly unexpected errors
         logger.critical(f"Unhandled exception at top level: {e}", exc_info=True)
         sys.exit(1)

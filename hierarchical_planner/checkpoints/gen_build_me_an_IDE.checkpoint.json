@@ -1,0 +1,53 @@
+{
+  "timestamp": 1743079185.40669,
+  "goal": "build me an IDE",
+  "reasoning_tree": {
+    "Phase 1: Requirements Analysis and Architectural Design": {
+      "Task 1.1: Define core IDE features and scope (MVP)": [
+        {
+          "step 1": "Research and summarize common features found in modern Integrated Development Environments (IDEs). Search the web for articles, comparisons, and documentation of popular IDEs (like VS Code, PyCharm, IntelliJ IDEA, Sublime Text, Atom). Focus on identifying the core functionalities that define an IDE."
+        },
+        {
+          "step 2": "Based on your research, brainstorm a comprehensive list of potential features for an IDE. Categorize them if helpful (e.g., Editing, Navigation, Debugging, Build/Run, Version Control, Project Management)."
+        },
+        {
+          "step 3": "Define the target user and primary programming language for the Minimum Viable Product (MVP) version of this IDE. For this initial MVP, let's target beginner Python developers. Document this decision."
+        },
+        {
+          "step 4": "From the brainstormed list (Step 2), select the absolute minimum set of features required for a functional MVP IDE specifically for writing and running simple Python scripts. Justify why each selected feature is essential for the MVP, keeping the target user (beginner Python developer) in mind. Hint: Think about the core loop: write code, save code, run code, see output."
+        },
+        {
+          "step 5": "For each feature selected for the MVP in Step 4, write a concise description outlining its basic requirements and functionality. For example:\n    *   **File Explorer:** Ability to view files/folders in a tree structure, open files into the editor.\n    *   **Text Editor:** Basic text input, editing (cut/copy/paste/undo/redo), and saving files.\n    *   **Python Syntax Highlighting:** Visually distinguish Python keywords, strings, comments, numbers within the text editor. Hint: Consider researching libraries like `Pygments` (Python backend) or `highlight.js`/`Monaco Editor` (if considering a web-based frontend later).\n    *   **Run Python Script:** A simple mechanism (e.g., a button or menu item) to execute the currently open Python file using the system's default Python interpreter and display its standard output and standard error. Hint: Look into using system processes/subprocesses."
+        },
+        {
+          "step 6": "Explicitly list key features that will *not* be included in the MVP (Non-Goals). This helps manage scope. Examples might include: Debugger, Code Completion (IntelliSense), Version Control Integration (Git), Plugin System, Advanced Refactoring Tools, Support for languages other than Python, Project-level settings."
+        },
+        {
+          "step 7": "Consolidate the target user/language definition (Step 3), the selected MVP features with their descriptions (Step 5), and the list of non-goals (Step 6) into a single, well-structured Markdown document named `MVP_FEATURES.md`. Ensure the document clearly defines the scope of the MVP."
+        }
+      ],
+      "Task 1.2: Identify target programming languages and platforms": [],
+      "Task 1.3: Define target user profiles and key use cases": [],
+      "Task 1.4: Specify non-functional requirements (performance, extensibility, security, etc.)": [],
+      "Task 1.5: Conduct competitive analysis of existing IDEs": [],
+      "Task 1.6: Select core technology stack (UI framework, backend language, key libraries)": [],
+      "Task 1.7: Design high-level system architecture (major components, interactions)": [],
+      "Task 1.8: Design editor core architecture (text handling, rendering, syntax highlighting approach)": [],
+      "Task 1.9: Design plugin/extension system architecture and API strategy": [],
+      "Task 1.10: Plan language support strategy (e.g., LSP integration)": [],
+      "Task 1.11: Define configuration management and data persistence approach": [],
+      "Task 1.12: Create initial UI/UX wireframes or mockups": [],
+      "Task 1.13: Outline preliminary build, testing, and deployment strategy": [],
+      "Task 1.14: Document requirements and architectural decisions": []
+    },
+    "Phase 2: Core Editor and Workspace Implementation": {},
+    "Phase 3: Language Support and Intelligence Features (Syntax Highlighting, Completion, Linting)": {},
+    "Phase 4: Build, Run, and Debug Integration": {},
+    "Phase 5: Version Control Integration": {},
+    "Phase 6: Extensibility and Plugin System Development (Optional but common)": {},
+    "Phase 7: Testing, Performance Optimization, and Refinement": {},
+    "Phase 8: Packaging, Documentation, and Release": {}
+  },
+  "last_processed_phase": "Phase 1: Requirements Analysis and Architectural Design",
+  "last_processed_task": "Task 1.1: Define core IDE features and scope (MVP)"
+}

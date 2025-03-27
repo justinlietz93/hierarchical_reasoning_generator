@@ -11,10 +11,11 @@ import json
 import asyncio
 import logging
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List, Tuple
 
 # Local imports
 from .gemini_client import call_gemini_with_retry # Assuming refactored location
+from .checkpoint_manager import CheckpointManager # Import the checkpoint manager
 from .exceptions import (
     FileProcessingError, PlannerFileNotFoundError, FileReadError, FileWriteError,
     JsonParsingError, JsonSerializationError, PlanValidationError, ApiCallError,
@@ -143,18 +144,26 @@ def validate_plan_structure(plan_data: dict) -> list[str]:
 
     return errors
 
-async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str, Any]) -> dict:
+async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str, Any], 
+                                   resume: bool = True, 
+                                   input_path: str = None,
+                                   output_path: str = None) -> dict:
     """
     Uses Gemini to analyze alignment, identify resources, and annotate the plan.
 
     Iterates through each step in the plan, calling the Gemini API via
     `call_gemini_with_retry` for resource identification and step critique.
     Adds the results (or error messages) under a 'qa_info' key within each step object.
+    
+    Supports checkpoint and resume functionality if enabled.
 
     Args:
         plan_data: The structurally validated plan data (Python dictionary).
         goal: The overall goal string, providing context for analysis.
         config: The application configuration dictionary.
+        resume: Whether to attempt to resume from a checkpoint if available.
+        input_path: Path to the input plan file (needed for checkpointing).
+        output_path: Path to the output plan file (needed for checkpointing).
 
     Returns:
         The plan data dictionary, modified in-place with 'qa_info' annotations.
@@ -166,22 +175,91 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                       annotation, but do not stop the overall process by default.
     """
     annotated_plan = plan_data # Modify in place
-
-    for phase_name, tasks in annotated_plan.items():
+    
+    # Initialize checkpoint manager and variables for tracking progress
+    checkpoint_manager = CheckpointManager()
+    checkpoint_path = ""
+    last_processed_phase = None
+    last_processed_task = None
+    last_processed_step_index = -1
+    
+    # Try to resume from checkpoint if enabled
+    if resume and input_path and output_path:
+        logger.info("Checking for existing QA checkpoints to resume from...")
+        checkpoint_data, checkpoint_path = checkpoint_manager.find_latest_qa_checkpoint(input_path)
+        
+        if checkpoint_data:
+            # Resume from checkpoint
+            logger.info(f"Resuming QA analysis from checkpoint: {checkpoint_path}")
+            
+            # Check if the saved checkpoint data is for the same output path
+            if checkpoint_data.get("output_path") == output_path:
+                # Restore annotated plan from checkpoint
+                saved_plan = checkpoint_data.get("validated_data")
+                if saved_plan:
+                    annotated_plan = saved_plan
+                    logger.info("Restored annotated plan from checkpoint")
+                
+                # Restore progress tracking
+                last_processed_phase = checkpoint_data.get("last_phase")
+                last_processed_task = checkpoint_data.get("last_task")
+                last_processed_step_index = checkpoint_data.get("last_step_index", -1)
+                
+                if last_processed_phase and last_processed_task:
+                    logger.info(f"Will resume QA analysis from Phase: '{last_processed_phase}', "
+                               f"Task: '{last_processed_task}', Step index: {last_processed_step_index + 1}")
+            else:
+                logger.warning("Found checkpoint is for a different output path, starting fresh")
+                
+    # Iterate through the plan phases, tasks, and steps
+    phase_names = list(annotated_plan.keys())
+    start_phase_idx = 0
+    
+    # Find the index of the last processed phase (if resuming)
+    if last_processed_phase in phase_names:
+        start_phase_idx = phase_names.index(last_processed_phase)
+        
+    # Iterate through phases
+    for phase_idx, phase_name in enumerate(phase_names[start_phase_idx:], start_phase_idx):
         logger.info(f"  Analyzing Phase: {phase_name}")
-        for task_name, steps in tasks.items():
+        tasks = annotated_plan[phase_name]
+        
+        # Get list of task names in this phase
+        task_names = list(tasks.keys())
+        start_task_idx = 0
+        
+        # If we're resuming in this phase, find the index of the last processed task
+        if phase_name == last_processed_phase and last_processed_task in task_names:
+            start_task_idx = task_names.index(last_processed_task)
+        
+        # Iterate through tasks
+        for task_idx, task_name in enumerate(task_names[start_task_idx:], start_task_idx):
             logger.info(f"    Analyzing Task: {task_name}")
+            steps = tasks[task_name]
+            
             if not steps:
                 logger.info("      Skipping task analysis (no steps).")
                 continue
+            
+            # Determine the starting step index
+            start_step_idx = 0
+            if (phase_name == last_processed_phase and 
+                task_name == last_processed_task and 
+                last_processed_step_index >= 0):
+                start_step_idx = last_processed_step_index + 1  # Start from the next step
+                if start_step_idx >= len(steps):
+                    # All steps in this task were already processed
+                    logger.info(f"      All steps in task '{task_name}' already processed")
+                    continue
 
             # --- Step-level Analysis ---
-            for i, step_obj in enumerate(steps):
+            for step_idx in range(start_step_idx, len(steps)):
+                step_obj = steps[step_idx]
                 step_keys = list(step_obj.keys())
                 prompt_key = next((k for k in step_keys if k != 'qa_info'), None)
 
                 if not prompt_key:
-                    logger.warning(f"      Skipping analysis for step {i+1} in Task '{task_name}' - no prompt key found.")
+                    logger.warning(f"      Skipping analysis for step {step_idx+1} in Task '{task_name}' - no prompt key found.")
                     continue
 
                 step_prompt = step_obj.get(prompt_key, "") # Use get for safety
@@ -195,63 +273,92 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                 if "qa_info" not in step_obj:
                     step_obj["qa_info"] = {}
 
-                # 1. Resource/Action Identification
-                try:
-                    resource_context = {
-                        "goal": goal,
-                        "phase": phase_name,
-                        "task": task_name,
-                        "prompt_text": step_prompt
-                    }
-                    # Pass config to retry function
-                    resource_analysis = await call_gemini_with_retry(
-                        RESOURCE_IDENTIFICATION_PROMPT, resource_context, config, is_structured=True
-                    )
-                    step_obj["qa_info"]["resource_analysis"] = resource_analysis
-                    logger.debug(f"        Resource analysis complete for {prompt_key}.")
-                except ApiCallError as e:
-                    # Log API errors but allow processing to continue for other steps
-                    logger.error(f"        API call failed during resource analysis for step {prompt_key}: {e}", exc_info=True)
-                    step_obj["qa_info"]["resource_analysis_error"] = f"API Error: {e}"
-                except Exception as e:
-                    # Catch other unexpected errors during this step's analysis
-                    logger.error(f"        Unexpected error during resource analysis for step {prompt_key}: {e}", exc_info=True)
-                    step_obj["qa_info"]["resource_analysis_error"] = f"Unexpected Error: {e}"
+                # 1. Resource/Action Identification (skip if already done)
+                if "resource_analysis" not in step_obj["qa_info"] and "resource_analysis_error" not in step_obj["qa_info"]:
+                    try:
+                        resource_context = {
+                            "goal": goal,
+                            "phase": phase_name,
+                            "task": task_name,
+                            "prompt_text": step_prompt
+                        }
+                        # Pass config to retry function
+                        resource_analysis = await call_gemini_with_retry(
+                            RESOURCE_IDENTIFICATION_PROMPT, resource_context, config, is_structured=True
+                        )
+                        step_obj["qa_info"]["resource_analysis"] = resource_analysis
+                        logger.debug(f"        Resource analysis complete for {prompt_key}.")
+                    except ApiCallError as e:
+                        # Log API errors but allow processing to continue for other steps
+                        logger.error(f"        API call failed during resource analysis for step {prompt_key}: {e}", exc_info=True)
+                        step_obj["qa_info"]["resource_analysis_error"] = f"API Error: {e}"
+                    except Exception as e:
+                        # Catch other unexpected errors during this step's analysis
+                        logger.error(f"        Unexpected error during resource analysis for step {prompt_key}: {e}", exc_info=True)
+                        step_obj["qa_info"]["resource_analysis_error"] = f"Unexpected Error: {e}"
 
+                    # Save checkpoint after each resource analysis
+                    if input_path and output_path:
+                        checkpoint_path = checkpoint_manager.save_qa_checkpoint(
+                            input_path=input_path,
+                            output_path=output_path,
+                            validated_data=annotated_plan,
+                            last_phase=phase_name,
+                            last_task=task_name,
+                            last_step_index=step_idx
+                        )
 
-                # 2. Alignment/Clarity Check (Individual Step)
-                try:
-                    alignment_context = {
-                        "goal": goal,
-                        "phase": phase_name,
-                        "task": task_name,
-                        "steps_json": json.dumps({prompt_key: step_prompt}, indent=2) # Analyze one step
-                    }
-                     # Pass config to retry function
-                    alignment_critique = await call_gemini_with_retry(
-                        ALIGNMENT_CHECK_PROMPT, alignment_context, config, is_structured=True
-                    )
-                    step_obj["qa_info"]["step_critique"] = alignment_critique
-                    logger.debug(f"        Step critique complete for {prompt_key}.")
-                except ApiCallError as e:
-                    logger.error(f"        API call failed during step critique for step {prompt_key}: {e}", exc_info=True)
-                    step_obj["qa_info"]["step_critique_error"] = f"API Error: {e}"
-                except Exception as e:
-                    logger.error(f"        Unexpected error during step critique for step {prompt_key}: {e}", exc_info=True)
-                    step_obj["qa_info"]["step_critique_error"] = f"Unexpected Error: {e}"
+                # 2. Alignment/Clarity Check (Individual Step) (skip if already done)
+                if "step_critique" not in step_obj["qa_info"] and "step_critique_error" not in step_obj["qa_info"]:
+                    try:
+                        alignment_context = {
+                            "goal": goal,
+                            "phase": phase_name,
+                            "task": task_name,
+                            "steps_json": json.dumps({prompt_key: step_prompt}, indent=2) # Analyze one step
+                        }
+                         # Pass config to retry function
+                        alignment_critique = await call_gemini_with_retry(
+                            ALIGNMENT_CHECK_PROMPT, alignment_context, config, is_structured=True
+                        )
+                        step_obj["qa_info"]["step_critique"] = alignment_critique
+                        logger.debug(f"        Step critique complete for {prompt_key}.")
+                    except ApiCallError as e:
+                        logger.error(f"        API call failed during step critique for step {prompt_key}: {e}", exc_info=True)
+                        step_obj["qa_info"]["step_critique_error"] = f"API Error: {e}"
+                    except Exception as e:
+                        logger.error(f"        Unexpected error during step critique for step {prompt_key}: {e}", exc_info=True)
+                        step_obj["qa_info"]["step_critique_error"] = f"Unexpected Error: {e}"
 
+                    # Save checkpoint after each step critique
+                    if input_path and output_path:
+                        checkpoint_path = checkpoint_manager.save_qa_checkpoint(
+                            input_path=input_path,
+                            output_path=output_path,
+                            validated_data=annotated_plan,
+                            last_phase=phase_name,
+                            last_task=task_name,
+                            last_step_index=step_idx
+                        )
 
+                # Update the last processed step index
+                last_processed_step_index = step_idx
+                
                 # Add a small delay to avoid hitting API rate limits too quickly
                 # Consider making this delay configurable
                 api_delay = config.get('api', {}).get('delay_between_qa_calls_sec', 1)
                 await asyncio.sleep(api_delay)
+                
+    # Delete the checkpoint since we completed successfully
+    if checkpoint_path:
+        checkpoint_manager.delete_checkpoint(checkpoint_path)
 
     return annotated_plan
 
 
 # --- Main Execution ---
 
-async def run_validation(input_path: str, output_path: str, config: Dict[str, Any]):
+async def run_validation(input_path: str, output_path: str, config: Dict[str, Any], resume: bool = True):
     """
     Orchestrates the QA validation workflow.
 
@@ -263,6 +370,7 @@ async def run_validation(input_path: str, output_path: str, config: Dict[str, An
         input_path: Absolute path to the input plan JSON file.
         output_path: Absolute path to save the validated/annotated plan JSON file.
         config: The application configuration dictionary.
+        resume: Whether to attempt to resume from a checkpoint if available.
 
     Raises:
         PlannerFileNotFoundError: If the input plan file or the goal file cannot be found.
@@ -276,6 +384,10 @@ async def run_validation(input_path: str, output_path: str, config: Dict[str, An
         Exception: Catches and logs other unexpected errors during the process.
     """
     logger.info(f"Starting QA validation process for: {input_path}")
+
+    # Initialize checkpoint manager
+    checkpoint_manager = CheckpointManager()
+    checkpoint_path = ""
 
     # 1. Load Plan
     try:
@@ -334,8 +446,15 @@ async def run_validation(input_path: str, output_path: str, config: Dict[str, An
     # 4. Analyze and Annotate
     logger.info("Starting plan analysis and annotation (this may take time)...")
     try:
-        # Pass config down
-        annotated_plan = await analyze_and_annotate_plan(plan_data, goal, config)
+        # Pass config down and include paths for checkpointing
+        annotated_plan = await analyze_and_annotate_plan(
+            plan_data, 
+            goal, 
+            config,
+            resume=resume,
+            input_path=input_path,
+            output_path=output_path
+        )
         logger.info("Plan analysis and annotation complete.")
     except ApiCallError:
         # Let API call errors from analysis propagate up if they weren't handled internally
@@ -356,6 +475,10 @@ async def run_validation(input_path: str, output_path: str, config: Dict[str, An
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(annotated_plan, f, indent=2, ensure_ascii=False)
         logger.info("Validated plan saved successfully.")
+        
+        # Delete checkpoint since we completed successfully
+        if checkpoint_path:
+            checkpoint_manager.delete_checkpoint(checkpoint_path)
     except IOError as e:
         logger.error(f"Error saving validated plan to '{output_path}': {e}", exc_info=True)
         raise FileWriteError(f"Error saving validated plan to '{output_path}': {e}") from e

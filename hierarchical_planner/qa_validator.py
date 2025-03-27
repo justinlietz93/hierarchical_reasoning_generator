@@ -1,12 +1,33 @@
+"""
+Quality Assurance (QA) and Validation module for the Hierarchical Planner.
+
+Provides functions to:
+1. Validate the structural integrity of the generated plan JSON.
+2. Analyze the plan using Gemini for goal alignment, logical sequence,
+   clarity, resource identification, etc.
+3. Annotate the plan JSON with QA findings.
+"""
 import json
 import asyncio
-from gemini_client import call_gemini_with_retry # Reusing the retry logic
+import logging
+import os
+from typing import Dict, Any
 
-# --- Configuration ---
-VALIDATED_OUTPUT_FILE = "reasoning_tree_validated.json"
-INPUT_FILE = "reasoning_tree.json" # Default input, can be overridden
+# Local imports
+from .gemini_client import call_gemini_with_retry # Assuming refactored location
+from .exceptions import (
+    FileProcessingError, PlannerFileNotFoundError, FileReadError, FileWriteError,
+    JsonParsingError, JsonSerializationError, PlanValidationError, ApiCallError,
+    ConfigError # Added ConfigError
+)
 
-# --- Prompt Templates for QA ---
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
+
+# --- Configuration (Removed hardcoded defaults) ---
+
+# --- Prompt Templates for QA --- (Keep as is)
 
 ALIGNMENT_CHECK_PROMPT = """
 You are a meticulous project plan reviewer.
@@ -57,17 +78,22 @@ Example:
 
 # --- Validation Functions ---
 
-def validate_plan_structure(plan_data: dict) -> list:
+def validate_plan_structure(plan_data: dict) -> list[str]:
     """
-    Programmatically validates the basic structure of the reasoning tree.
+    Programmatically validates the basic structure of the reasoning tree JSON.
+
+    Checks for correct types (dict, list) at each level (phases, tasks, steps)
+    and verifies the format of individual step entries.
 
     Args:
-        plan_data: The loaded JSON data as a Python dictionary.
+        plan_data: The loaded JSON data as a Python dictionary representing the plan.
 
     Returns:
-        A list of error messages. An empty list indicates a valid structure.
+        A list of error message strings. An empty list indicates a valid structure.
+        This function does not raise exceptions itself, allowing the caller
+        (e.g., `run_validation`) to decide how to handle errors.
     """
-    errors = []
+    errors: list[str] = []
     if not isinstance(plan_data, dict):
         errors.append("Root level must be a dictionary (phases).")
         return errors # Cannot proceed if root is not dict
@@ -87,50 +113,85 @@ def validate_plan_structure(plan_data: dict) -> list:
                 if not isinstance(step_obj, dict):
                     errors.append(f"Step {step_index} in Task '{task_name}', Phase '{phase_name}' must be a dictionary.")
                     continue
-                if len(step_obj) != 1:
-                    errors.append(f"Step {step_index} dictionary in Task '{task_name}', Phase '{phase_name}' must have exactly one key-value pair.")
-                    continue
-                step_key = list(step_obj.keys())[0]
-                step_value = list(step_obj.values())[0]
-                if not step_key.lower().startswith("step"):
-                     errors.append(f"Step {step_index} key ('{step_key}') in Task '{task_name}', Phase '{phase_name}' should start with 'step'.")
+
+                # Allow for qa_info key, find the prompt key
+                step_keys = list(step_obj.keys())
+                prompt_key = next((k for k in step_keys if k != 'qa_info'), None)
+
+                if not prompt_key:
+                     # If only qa_info exists or it's empty, it's an error
+                     if len(step_keys) > 0 and all(k == 'qa_info' for k in step_keys):
+                         logger.warning(f"Step {step_index} in Task '{task_name}', Phase '{phase_name}' only contains 'qa_info'. Assuming valid structure but no prompt.")
+                         continue # Allow steps that might *only* have QA info after processing? Or error? Let's allow for now.
+                     else:
+                         errors.append(f"Step {step_index} in Task '{task_name}', Phase '{phase_name}' has no prompt key (e.g., 'step N'). Found keys: {step_keys}")
+                         continue
+
+                # Check prompt key format (optional, warning only)
+                if not prompt_key.lower().startswith("step"):
+                     logger.warning(f"Step {step_index} key ('{prompt_key}') in Task '{task_name}', Phase '{phase_name}' does not start with 'step'.")
+
+                # Check prompt value
+                step_value = step_obj.get(prompt_key) # Use .get for safety
                 if not isinstance(step_value, str) or not step_value:
-                    errors.append(f"Step {step_index} value ('{step_key}') in Task '{task_name}', Phase '{phase_name}' must be a non-empty string (the prompt).")
+                    errors.append(f"Step {step_index} value ('{prompt_key}') in Task '{task_name}', Phase '{phase_name}' must be a non-empty string (the prompt).")
+
+                # Check qa_info structure if present (optional)
+                qa_info = step_obj.get('qa_info')
+                if qa_info is not None and not isinstance(qa_info, dict):
+                     errors.append(f"Step {step_index} 'qa_info' in Task '{task_name}', Phase '{phase_name}' must be a dictionary if present.")
 
     return errors
 
-async def analyze_and_annotate_plan(plan_data: dict, goal: str) -> dict:
+async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str, Any]) -> dict:
     """
     Uses Gemini to analyze alignment, identify resources, and annotate the plan.
 
+    Iterates through each step in the plan, calling the Gemini API via
+    `call_gemini_with_retry` for resource identification and step critique.
+    Adds the results (or error messages) under a 'qa_info' key within each step object.
+
     Args:
-        plan_data: The structurally validated plan data.
-        goal: The overall goal string.
+        plan_data: The structurally validated plan data (Python dictionary).
+        goal: The overall goal string, providing context for analysis.
+        config: The application configuration dictionary.
 
     Returns:
-        The annotated plan data.
+        The plan data dictionary, modified in-place with 'qa_info' annotations.
+
+    Raises:
+        ApiCallError: If a Gemini API call fails definitively after retries
+                      (propagated from `call_gemini_with_retry`). Errors during
+                      individual step analysis are logged and recorded in the
+                      annotation, but do not stop the overall process by default.
     """
-    annotated_plan = plan_data # Start with the original data
+    annotated_plan = plan_data # Modify in place
 
     for phase_name, tasks in annotated_plan.items():
-        print(f"  Analyzing Phase: {phase_name}")
+        logger.info(f"  Analyzing Phase: {phase_name}")
         for task_name, steps in tasks.items():
-            print(f"    Analyzing Task: {task_name}")
+            logger.info(f"    Analyzing Task: {task_name}")
             if not steps:
-                print("      Skipping task analysis (no steps).")
+                logger.info("      Skipping task analysis (no steps).")
                 continue
-
-            # --- Task-level Alignment Check (Optional - could analyze all steps together) ---
-            # For simplicity, we'll analyze step-by-step for resources first,
-            # then potentially do a broader alignment check if needed.
 
             # --- Step-level Analysis ---
             for i, step_obj in enumerate(steps):
-                step_key = list(step_obj.keys())[0]
-                step_prompt = step_obj[step_key]
-                print(f"      Analyzing Step: {step_key}")
+                step_keys = list(step_obj.keys())
+                prompt_key = next((k for k in step_keys if k != 'qa_info'), None)
 
-                # Initialize QA info for the step
+                if not prompt_key:
+                    logger.warning(f"      Skipping analysis for step {i+1} in Task '{task_name}' - no prompt key found.")
+                    continue
+
+                step_prompt = step_obj.get(prompt_key, "") # Use get for safety
+                if not step_prompt:
+                     logger.warning(f"      Skipping analysis for step {prompt_key} in Task '{task_name}' - empty prompt.")
+                     continue
+
+                logger.info(f"      Analyzing Step: {prompt_key}")
+
+                # Initialize QA info for the step if not present
                 if "qa_info" not in step_obj:
                     step_obj["qa_info"] = {}
 
@@ -142,14 +203,21 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str) -> dict:
                         "task": task_name,
                         "prompt_text": step_prompt
                     }
+                    # Pass config to retry function
                     resource_analysis = await call_gemini_with_retry(
-                        RESOURCE_IDENTIFICATION_PROMPT, resource_context, is_structured=True
+                        RESOURCE_IDENTIFICATION_PROMPT, resource_context, config, is_structured=True
                     )
                     step_obj["qa_info"]["resource_analysis"] = resource_analysis
-                    print(f"        Resource analysis complete.")
+                    logger.debug(f"        Resource analysis complete for {prompt_key}.")
+                except ApiCallError as e:
+                    # Log API errors but allow processing to continue for other steps
+                    logger.error(f"        API call failed during resource analysis for step {prompt_key}: {e}", exc_info=True)
+                    step_obj["qa_info"]["resource_analysis_error"] = f"API Error: {e}"
                 except Exception as e:
-                    print(f"        Error during resource analysis for step {step_key}: {e}")
-                    step_obj["qa_info"]["resource_analysis_error"] = str(e)
+                    # Catch other unexpected errors during this step's analysis
+                    logger.error(f"        Unexpected error during resource analysis for step {prompt_key}: {e}", exc_info=True)
+                    step_obj["qa_info"]["resource_analysis_error"] = f"Unexpected Error: {e}"
+
 
                 # 2. Alignment/Clarity Check (Individual Step)
                 try:
@@ -157,101 +225,143 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str) -> dict:
                         "goal": goal,
                         "phase": phase_name,
                         "task": task_name,
-                        "steps_json": json.dumps({step_key: step_prompt}, indent=2) # Analyze one step
+                        "steps_json": json.dumps({prompt_key: step_prompt}, indent=2) # Analyze one step
                     }
+                     # Pass config to retry function
                     alignment_critique = await call_gemini_with_retry(
-                        ALIGNMENT_CHECK_PROMPT, alignment_context, is_structured=True
+                        ALIGNMENT_CHECK_PROMPT, alignment_context, config, is_structured=True
                     )
                     step_obj["qa_info"]["step_critique"] = alignment_critique
-                    print(f"        Step critique complete.")
+                    logger.debug(f"        Step critique complete for {prompt_key}.")
+                except ApiCallError as e:
+                    logger.error(f"        API call failed during step critique for step {prompt_key}: {e}", exc_info=True)
+                    step_obj["qa_info"]["step_critique_error"] = f"API Error: {e}"
                 except Exception as e:
-                    print(f"        Error during step critique for step {step_key}: {e}")
-                    step_obj["qa_info"]["step_critique_error"] = str(e)
+                    logger.error(f"        Unexpected error during step critique for step {prompt_key}: {e}", exc_info=True)
+                    step_obj["qa_info"]["step_critique_error"] = f"Unexpected Error: {e}"
+
 
                 # Add a small delay to avoid hitting API rate limits too quickly
-                await asyncio.sleep(1) # Adjust as needed
+                # Consider making this delay configurable
+                api_delay = config.get('api', {}).get('delay_between_qa_calls_sec', 1)
+                await asyncio.sleep(api_delay)
 
     return annotated_plan
 
 
 # --- Main Execution ---
 
-async def run_validation(input_path: str = INPUT_FILE, output_path: str = VALIDATED_OUTPUT_FILE):
-    """Loads, validates, analyzes, annotates, and saves the plan."""
-    print(f"Starting QA validation process for: {input_path}")
+async def run_validation(input_path: str, output_path: str, config: Dict[str, Any]):
+    """
+    Orchestrates the QA validation workflow.
+
+    Loads the plan from `input_path`, validates its structure, loads the
+    original goal, analyzes and annotates the plan using Gemini, and saves
+    the annotated result to `output_path`.
+
+    Args:
+        input_path: Absolute path to the input plan JSON file.
+        output_path: Absolute path to save the validated/annotated plan JSON file.
+        config: The application configuration dictionary.
+
+    Raises:
+        PlannerFileNotFoundError: If the input plan file or the goal file cannot be found.
+        FileReadError: If the input plan or goal file cannot be read.
+        JsonParsingError: If the input plan file contains invalid JSON.
+        PlanValidationError: If the plan structure validation fails.
+        ConfigError: If the configuration is missing necessary keys (e.g., 'files.default_task').
+        FileWriteError: If the output file cannot be written.
+        JsonSerializationError: If the annotated plan cannot be serialized to JSON.
+        ApiCallError: If a critical API call fails during the analysis phase.
+        Exception: Catches and logs other unexpected errors during the process.
+    """
+    logger.info(f"Starting QA validation process for: {input_path}")
 
     # 1. Load Plan
     try:
+        logger.info(f"Loading plan from: {input_path}")
         with open(input_path, 'r', encoding='utf-8') as f:
             plan_data = json.load(f)
-        print("Plan loaded successfully.")
-    except FileNotFoundError:
-        print(f"Error: Input plan file '{input_path}' not found.")
-        return
+        logger.info("Plan loaded successfully.")
+    except FileNotFoundError: # Built-in
+        logger.error(f"Input plan file '{input_path}' not found.")
+        raise PlannerFileNotFoundError(f"Input plan file '{input_path}' not found.") from None
     except json.JSONDecodeError as e:
-        print(f"Error: Failed to parse JSON from '{input_path}': {e}")
-        return
+        logger.error(f"Failed to parse JSON from '{input_path}': {e}", exc_info=True)
+        raise JsonParsingError(f"Failed to parse JSON from '{input_path}': {e}") from e
+    except IOError as e:
+        logger.error(f"Error reading input file '{input_path}': {e}", exc_info=True)
+        raise FileReadError(f"Error reading input file '{input_path}': {e}") from e
+
 
     # 2. Validate Structure
-    print("Validating plan structure...")
+    logger.info("Validating plan structure...")
     structure_errors = validate_plan_structure(plan_data)
     if structure_errors:
-        print("Structural validation failed:")
-        for error in structure_errors:
-            print(f"- {error}")
-        # Decide whether to stop or continue with analysis despite structural errors
-        # For now, let's stop if the structure is fundamentally broken.
-        print("Aborting QA process due to structural errors.")
-        return
+        error_details = "\n".join([f"- {err}" for err in structure_errors])
+        logger.error(f"Structural validation failed:\n{error_details}")
+        raise PlanValidationError(f"Plan structure validation failed:\n{error_details}")
     else:
-        print("Plan structure validation successful.")
+        logger.info("Plan structure validation successful.")
 
-    # 3. Analyze and Annotate (Requires Goal - how to get it?)
-    # We need the original goal. Let's assume it's passed or read from task.txt
-    # For now, let's add a placeholder. This needs refinement in integration.
+    # 3. Load Goal for Analysis
+    # Determine goal file path relative to the input plan file's directory
+    # Use the 'default_task' filename from config, assuming it's in the same dir as input_path
     try:
-        # Attempt to read goal from task.txt relative to the input file's dir
-        goal_file_path = os.path.join(os.path.dirname(input_path) or '.', 'task.txt')
+        task_filename = os.path.basename(config['files']['default_task'])
+        goal_file_path = os.path.join(os.path.dirname(input_path) or '.', task_filename)
+    except KeyError:
+         logger.error("Configuration missing 'files.default_task' needed to locate goal file.")
+         raise ConfigError("Configuration missing 'files.default_task' needed to locate goal file.")
+
+    goal = None
+    try:
+        logger.info(f"Loading goal for analysis from: {goal_file_path}")
         with open(goal_file_path, 'r', encoding='utf-8') as f:
             goal = f.read().strip()
         if not goal:
-             raise ValueError("Goal file 'task.txt' is empty.")
-        print(f"Goal '{goal}' loaded for analysis.")
-    except Exception as e:
-        print(f"Error loading goal from '{goal_file_path}': {e}")
-        print("Cannot proceed with content analysis without the goal.")
-        # Optionally save just the structurally validated file?
-        return
+             logger.error(f"Goal file '{goal_file_path}' is empty.")
+             raise FileReadError(f"Goal file '{goal_file_path}' is empty, cannot proceed with analysis.")
+        logger.info(f"Goal '{goal[:100]}...' loaded for analysis.")
+    except FileNotFoundError: # Built-in
+        logger.error(f"Goal file '{goal_file_path}' not found.")
+        raise PlannerFileNotFoundError(f"Goal file '{goal_file_path}' not found, cannot proceed with analysis.") from None
+    except IOError as e:
+        logger.error(f"Error reading goal file '{goal_file_path}': {e}", exc_info=True)
+        raise FileReadError(f"Error reading goal file '{goal_file_path}': {e}") from e
 
-    print("Starting plan analysis and annotation (this may take time)...")
-    try:
-        annotated_plan = await analyze_and_annotate_plan(plan_data, goal)
-        print("Plan analysis and annotation complete.")
-    except Exception as e:
-        print(f"An error occurred during plan analysis: {e}")
-        # Decide how to handle partial annotation
-        print("Saving potentially partially annotated plan.")
-        annotated_plan = plan_data # Revert to original data or keep partial? For now, keep partial.
 
-    # 4. Save Validated Plan
+    # 4. Analyze and Annotate
+    logger.info("Starting plan analysis and annotation (this may take time)...")
     try:
-        print(f"Saving validated plan to: {output_path}")
+        # Pass config down
+        annotated_plan = await analyze_and_annotate_plan(plan_data, goal, config)
+        logger.info("Plan analysis and annotation complete.")
+    except ApiCallError:
+        # Let API call errors from analysis propagate up if they weren't handled internally
+        logger.error("A critical API call failed during analysis.")
+        raise # Re-raise ApiCallError
+    except Exception as e:
+        # Catch other unexpected errors during analysis
+        logger.error(f"An unexpected error occurred during plan analysis: {e}", exc_info=True)
+        # Decide whether to raise or just log and save partially annotated plan
+        # For now, let's log and continue to save what we have
+        logger.warning("Saving potentially partially annotated plan due to analysis error.")
+        annotated_plan = plan_data # Use potentially partially modified data
+
+
+    # 5. Save Validated Plan
+    try:
+        logger.info(f"Saving validated plan to: {output_path}")
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(annotated_plan, f, indent=2, ensure_ascii=False)
-        print("Validated plan saved successfully.")
-    except Exception as e:
-        print(f"Error saving validated plan to '{output_path}': {e}")
+        logger.info("Validated plan saved successfully.")
+    except IOError as e:
+        logger.error(f"Error saving validated plan to '{output_path}': {e}", exc_info=True)
+        raise FileWriteError(f"Error saving validated plan to '{output_path}': {e}") from e
+    except TypeError as e:
+        logger.error(f"Error serializing annotated plan to JSON: {e}", exc_info=True)
+        raise JsonSerializationError(f"Error serializing annotated plan to JSON: {e}") from e
 
-if __name__ == "__main__":
-    import os
-    # Basic check for API key before running analysis
-    if not os.getenv("GEMINI_API_KEY"):
-        print("Error: The GEMINI_API_KEY environment variable is not set.")
-        print("Please set it before running the QA validation script.")
-    else:
-        # Example: Run validation on the default input file
-        # Assumes reasoning_tree.json and task.txt are in the same directory
-        # as qa_validator.py when run directly.
-        input_file = INPUT_FILE
-        output_file = VALIDATED_OUTPUT_FILE
-        asyncio.run(run_validation(input_file, output_file))
+
+# Removed __main__ block as this module should be called from main.py

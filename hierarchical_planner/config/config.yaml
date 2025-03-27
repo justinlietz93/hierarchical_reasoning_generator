@@ -1,0 +1,23 @@
+# Configuration for Hierarchical Planner
+
+api:
+  # API Key: Can be the key itself, an environment variable name (e.g., GEMINI_API_KEY),
+  # or null/empty to rely solely on the environment variable.
+  key: GEMINI_API_KEY
+  model_name: gemini-2.5-pro-exp-03-25 # User requested model
+  temperature: 0.7
+  max_output_tokens: 8192
+  retries: 3 # Number of retries for API calls
+
+files:
+  # Default file paths relative to the hierarchical_planner directory
+  default_task: task.txt
+  default_output: reasoning_tree.json
+  default_validated_output: reasoning_tree_validated.json
+
+logging:
+  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: INFO
+  # Log file path relative to the hierarchical_planner directory
+  log_file: logs/planner.log
+  log_to_console: true

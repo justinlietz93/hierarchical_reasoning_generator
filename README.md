@@ -1,105 +1,155 @@
 # Hierarchical Planner with Gemini AI
 
-A Python application that breaks down high-level goals into structured, actionable steps using Google's Gemini AI model. This tool creates a hierarchical planning structure by generating:
-
-1. **Phases** - Major stages of the project
-2. **Tasks** - Specific actionable items within each phase
-3. **Steps** - Detailed instructions for completing each task
+A Python application that breaks down high-level goals into structured, actionable steps using Google's Gemini AI model. This tool creates a hierarchical planning structure (Phases -> Tasks -> Steps) suitable for guiding autonomous agents or project planning. It includes configuration management, logging, error handling, an optional QA validation step, and unit tests.
 
 ## Features
 
-- Utilizes Google's Gemini 2.5 Pro model for intelligent task breakdown
-- Generates a comprehensive hierarchical planning structure
-- Outputs results as a structured JSON file
-- Includes retry mechanisms and error handling
+- Utilizes Google's Gemini models (configurable, e.g., `gemini-2.5-pro-exp-03-25`) for intelligent task breakdown.
+- Generates a comprehensive hierarchical planning structure (Phases, Tasks, Steps).
+- Outputs results as structured JSON files (`reasoning_tree.json`).
+- **Optional QA Validation**: Analyzes the generated plan for structural integrity, goal alignment, clarity, and resource identification using Gemini, outputting an annotated plan (`reasoning_tree_validated.json`).
+- **Configuration**: Manages API keys, model parameters, file paths, and logging settings via `hierarchical_planner/config/config.yaml`.
+- **Logging**: Implements configurable logging to console and/or file (`hierarchical_planner/logs/planner.log`).
+- **Error Handling**: Includes custom exceptions and retry mechanisms for API calls and file operations.
+- **Unit Tests**: Provides `pytest` unit tests for core components.
+
+## Project Structure
+
+```
+gemini/
+├── .env                  # (Optional/Recommended) For storing GEMINI_API_KEY
+├── .gitignore
+├── README.md
+└── hierarchical_planner/
+    ├── config/
+    │   ├── config.yaml   # Main configuration file
+    │   └── .gitkeep
+    ├── logs/             # Log files (ignored by git)
+    │   └── .gitkeep
+    ├── tests/            # Unit tests
+    │   ├── test_config_loader.py
+    │   ├── test_gemini_client.py
+    │   ├── test_main.py
+    │   ├── test_qa_validator.py
+    │   └── .gitkeep
+    ├── config_loader.py  # Loads configuration
+    ├── exceptions.py     # Custom exception classes
+    ├── gemini_client.py  # Handles Gemini API interaction
+    ├── logger_setup.py   # Configures logging
+    ├── main.py           # Main script execution and workflow orchestration
+    ├── qa_validator.py   # QA validation and annotation logic
+    ├── requirements-dev.txt # Dependencies for testing/development
+    ├── requirements.txt  # Core application dependencies
+    └── task.txt          # Input file for the high-level goal
+```
 
 ## Installation
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/gemini.git
-   cd gemini
-   ```
+1.  **Clone the repository:**
+    ```bash
+    # Replace with the actual repository URL if applicable
+    git clone https://github.com/yourusername/gemini.git
+    cd gemini
+    ```
 
-2. Create a virtual environment and activate it:
-   ```
-   python -m venv venv
-   # On Windows
-   venv\Scripts\activate
-   # On macOS/Linux
-   source venv/bin/activate
-   ```
+2.  **Create and activate a virtual environment:**
+    ```bash
+    python -m venv venv
+    # On Windows
+    venv\Scripts\activate
+    # On macOS/Linux
+    source venv/bin/activate
+    ```
 
-3. Install the required dependencies:
-   ```
-   pip install -r hierarchical_planner/requirements.txt
-   ```
+3.  **Install dependencies:**
+    ```bash
+    # Install core dependencies
+    pip install -r hierarchical_planner/requirements.txt
+    # Install development/testing dependencies (optional, for running tests)
+    pip install -r hierarchical_planner/requirements-dev.txt
+    ```
 
-4. Set up your API key:
-   - Create a `.env` file in the project root
-   - Add your Gemini API key:
-     ```
-     GEMINI_API_KEY=your_api_key_here
-     ```
+4.  **Configure the application:**
+    *   **API Key:** The recommended way is to create a `.env` file in the project root (`gemini/`) and add your key:
+        ```dotenv
+        GEMINI_API_KEY=YOUR_API_KEY_HERE
+        ```
+        Alternatively, you can modify `hierarchical_planner/config/config.yaml` to include the key directly or specify a different environment variable name (see comments in `config.yaml`).
+    *   **Other Settings:** Review and modify `hierarchical_planner/config/config.yaml` to adjust the Gemini model, API parameters, default file paths, or logging settings as needed.
 
 ## Usage
 
-1. Define your high-level goal in the `hierarchical_planner/task.txt` file.
-   - Example: "build me an IDE"
+1.  **Define Goal:** Edit `hierarchical_planner/task.txt` with your high-level goal (e.g., "build me an IDE").
 
-2. Run the planner:
-   ```
-   cd hierarchical_planner
-   python main.py
-   ```
+2.  **Run the Planner:** Navigate to the `hierarchical_planner` directory and run `main.py`.
+    ```bash
+    cd hierarchical_planner
+    python main.py [OPTIONS]
+    ```
 
-3. Examine the generated plan in `reasoning_tree.json`
+3.  **Options:**
+    *   `--task-file PATH`: Specify a different input task file. (Default: `task.txt`)
+    *   `--output-file PATH`: Specify a different output file for the initial plan. (Default: `reasoning_tree.json`)
+    *   `--validated-output-file PATH`: Specify a different output file for the QA-validated plan. (Default: `reasoning_tree_validated.json`)
+    *   `--skip-qa`: Skip the QA validation and annotation step.
+
+4.  **Examine Output:**
+    *   `reasoning_tree.json`: Contains the initial plan generated by Gemini.
+    *   `reasoning_tree_validated.json`: (If QA is not skipped) Contains the plan annotated with QA analysis (`qa_info` added to each step).
+    *   Logs: Check the console output and/or `hierarchical_planner/logs/planner.log` (if file logging is enabled) for progress and errors.
+
+## Running Tests
+
+Ensure development dependencies are installed (`pip install -r hierarchical_planner/requirements-dev.txt`). Run tests from the project root directory (`gemini/`):
+
+```bash
+pytest
+```
 
 ## Output Structure
 
-The planner generates a JSON file with the following structure:
+The generated JSON files (`reasoning_tree.json` and `reasoning_tree_validated.json`) follow this structure:
 
 ```json
 {
-  "Phase 1: Planning and Design": {
-    "Task 1.1: Define requirements": [
-      {"step 1": "Create a document outlining core IDE features..."},
-      {"step 2": "Research existing IDEs..."}
-    ]
+  "Phase Name 1": {
+    "Task Name 1.1": [
+      {
+        "step 1": "Detailed prompt for AI agent for step 1...",
+        "qa_info": { // Added by QA validation step
+          "resource_analysis": {
+            "external_actions": [],
+            "key_entities_dependencies": ["..."],
+            "technology_hints": ["..."]
+          },
+          "step_critique": {
+            "alignment_critique": "...",
+            "sequence_critique": "...",
+            "clarity_critique": "..."
+          }
+        }
+      },
+      {"step 2": "Detailed prompt for AI agent for step 2..."}
+      // ... more steps
+    ],
+    // ... more tasks
   },
-  "Phase 2: Core Implementation": {
-    "Task 2.1: Set up project structure": [
-      {"step 1": "Create the main project directory..."}
-    ]
-  }
+  // ... more phases
 }
 ```
-
-## Autonomous Project Development
-
-The generated reasoning tree serves as a comprehensive blueprint for autonomous project development:
-
-- **AI Agent Guidance**: The hierarchical structure provides clear, step-by-step instructions that can guide AI coding agents through complex development processes
-- **Autonomous Execution**: Each step is designed to be actionable and specific, enabling automated systems to execute tasks with minimal human intervention
-- **Project Tracking**: The structured format facilitates automated progress tracking and reporting throughout the development lifecycle
-- **Scalable Development**: By breaking down complex goals into manageable pieces, the system enables autonomous handling of increasingly complex projects
-- **Integration with Development Tools**: The JSON output can be integrated with CI/CD pipelines, project management tools, or other AI systems to automate the entire development workflow
-
-The detailed prompts generated at the step level contain sufficient context and specificity for AI systems to independently implement each component, gradually building towards the complete project goal.
+*Note: `qa_info` is only present in `reasoning_tree_validated.json`.*
 
 ## Requirements
 
 - Python 3.8+
 - Google Gemini API key
-- Required Python packages (see requirements.txt):
-  - google-generativeai
-  - python-dotenv
+- Required Python packages (see `hierarchical_planner/requirements.txt` and `hierarchical_planner/requirements-dev.txt`)
 
 ## License
 
-MIT License
+MIT License (Content from original README preserved below)
 
-Copyright (c) 2024 
+Copyright (c) 2025
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -121,4 +171,4 @@ SOFTWARE.
 
 ## Acknowledgments
 
-- This project uses Google's Generative AI (Gemini) for content generation
+- This project uses Google's Generative AI (Gemini) for content generation.

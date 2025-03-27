@@ -1,0 +1,7 @@
+# Development and Testing Dependencies
+pytest
+pytest-asyncio
+pytest-mock
+PyYAML # Also needed for running tests if config loading is tested
+google-generativeai # Needed for type hints and potentially mocking specifics
+python-dotenv # Needed for config loading tests potentially

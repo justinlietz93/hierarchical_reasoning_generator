@@ -1,5 +1,5 @@
 {
-  "timestamp": 1743079445.083376,
+  "timestamp": 1743079614.411986,
   "goal": "build me an IDE",
   "reasoning_tree": {
     "Phase 1: Requirements Analysis and Architectural Design": {
@@ -384,14 +384,256 @@
       ]
     },
     "Phase 2: Core Editor and Workspace Implementation": {
-      "Task 2.1: Implement core text area widget for code display and input": [],
-      "Task 2.2: Integrate syntax highlighting library/engine": [],
-      "Task 2.3: Add line numbering display to the editor gutter": [],
-      "Task 2.4: Implement cursor positioning and text selection logic": [],
-      "Task 2.5: Implement basic undo/redo functionality": [],
-      "Task 2.6: Implement editor scrolling (vertical and horizontal)": [],
-      "Task 2.7: Develop file tree view component": [],
-      "Task 2.8: Implement logic to read and display directory structures in the file tree": [],
+      "Task 2.1: Implement core text area widget for code display and input": [
+        {
+          "step 1": "Create a new Python file named `editor_widget.py`. Import the chosen GUI toolkit library (assuming Tkinter for now: `import tkinter as tk` and `from tkinter import scrolledtext, font`). Define a class `CodeEditor` that inherits from a suitable widget container (e.g., `tk.Frame`)."
+        },
+        {
+          "step 2": "In the `CodeEditor` class's `__init__` method, initialize the parent frame. Create the main text area widget (e.g., `tk.Text`). Configure basic properties like a monospaced font (e.g., Courier New, Consolas), set `wrap='none'`, and enable the undo/redo stack (`undo=True`). Store the text widget as an instance variable (e.g., `self.text_area`). Hint: Use `tkinter.font.Font` for specific font configurations."
+        },
+        {
+          "step 3": "Implement a line numbering sidebar. Create a `tk.Canvas` or a disabled `tk.Text` widget placed to the left of the main `self.text_area`. Write a method to draw/update the line numbers based on the content of `self.text_area`. This method should be called initially and whenever the text content or view changes. Hint: Search web for 'Tkinter Text widget with line numbers synchronization'."
+        },
+        {
+          "step 4": "Add vertical and horizontal scrollbars (`tk.Scrollbar`). Configure the vertical scrollbar to control both the `self.text_area` and the line number widget simultaneously. Configure the horizontal scrollbar to control the `self.text_area`. Ensure proper layout using `pack`, `grid`, or `place` geometry managers."
+        },
+        {
+          "step 5": "Implement methods within the `CodeEditor` class to interact with the text content: `get_text()` to return the entire content of the text area, `set_text(content: str)` to replace the entire content, and `clear_text()` to delete all content. Ensure `set_text` also triggers an update of the line numbers."
+        },
+        {
+          "step 6": "Bind events to the `self.text_area` and potentially the line number widget to trigger updates. Key events include text insertion/deletion (`<KeyRelease>`, `<Control-v>`, etc.) and scrolling (`<Configure>`, `<MouseWheel>`, yview/xview changes) to keep the line numbers synchronized with the text view. Hint: Use virtual events like `<<Modified>>` if available and appropriate for detecting text changes efficiently. Remember to update line numbers on undo/redo actions as well."
+        },
+        {
+          "step 7": "Refine the layout and synchronization logic between the text area, line numbers, and scrollbars. Ensure the line numbers align correctly with the text lines, even when scrolling horizontally or vertically, or when the font size changes (if dynamic font sizing is planned later)."
+        },
+        {
+          "step 8": "Create a simple test script (e.g., `test_editor_widget.py`) that imports `CodeEditor`, instantiates it within a main `tk.Tk` window, packs the editor widget, pre-populates it with some sample code using `set_text()`, and starts the Tkinter main loop (`mainloop()`) to visually verify its appearance and basic functionality (typing, scrolling, line numbers, undo/redo)."
+        }
+      ],
+      "Task 2.2: Integrate syntax highlighting library/engine": [
+        {
+          "step 1": "Research suitable syntax highlighting libraries compatible with the current project's technology stack. Assuming a Python/PyQt (or PySide) stack, investigate libraries like QScintilla (via PyQt6.Qsci or PySide6.Qsci). Evaluate ease of integration, language support, and performance. Hint: Search the web for 'Python PyQt syntax highlighting library' or 'QScintilla Python'."
+        },
+        {
+          "step 2": "Based on the research, select a library. Assuming QScintilla is chosen, install the necessary package. Hint: Use pip, e.g., `pip install PyQt6-Qsci` (adjust based on your specific PyQt/PySide version)."
+        },
+        {
+          "step 3": "Locate the code file defining the main text editor widget (likely created in a previous step, perhaps using `QTextEdit`). Modify this code to replace the standard text widget with the `QsciScintilla` widget. Update imports and any necessary initialization code. Hint: `from PyQt6.Qsci import QsciScintilla`."
+        },
+        {
+          "step 4": "Configure the `QsciScintilla` widget for basic Python syntax highlighting. Import the Python lexer (`QsciLexerPython`) and set it on the editor widget instance. Hint: `lexer = QsciLexerPython(self.editor_widget)` followed by `self.editor_widget.setLexer(lexer)`."
+        },
+        {
+          "step 5": "Apply basic styling to the Python lexer. Set a default font for the editor and define colors for common Python elements like keywords, comments, strings, and identifiers. Hint: Use methods like `editor_widget.setFont(...)`, `lexer.setColor(QColor(...), QsciLexerPython.Keyword)`, `lexer.setPaper(QColor(...))`."
+        },
+        {
+          "step 6": "Implement dynamic language detection based on file extension. Modify the logic responsible for opening files. Create a mapping (e.g., a dictionary) that associates file extensions (like '.py', '.js', '.html', '.css', '.txt') with their corresponding QScintilla lexer classes (e.g., `QsciLexerPython`, `QsciLexerJavaScript`, `QsciLexerHTML`, `QsciLexerCSS`, `None` or a basic text lexer for `.txt`)."
+        },
+        {
+          "step 7": "Integrate the dynamic language detection into the file loading process. When a file is loaded into the editor, retrieve its extension, look up the appropriate lexer using the mapping from the previous step, instantiate the lexer (or set lexer to None if no specific one is found), and apply it to the `QsciScintilla` widget using `setLexer()`. Ensure styling (like fonts/colors defined in step 5) is reapplied or handled appropriately when the lexer changes."
+        },
+        {
+          "step 8": "Add basic line number display to the editor widget. Hint: QScintilla provides methods for managing margins, typically margin 0 is used for line numbers. Use `setMarginType(0, QsciScintilla.MarginType.NumberMargin)`, `setMarginWidth(0, ...)`, and potentially configure colors for the line number margin."
+        },
+        {
+          "step 9": "Test the syntax highlighting integration thoroughly. Open various file types (.py, .js, .html, .css, .txt, and files with unknown extensions) to ensure: a) The correct lexer is applied based on the extension. b) Syntax is highlighted appropriately for supported languages. c) Line numbers are displayed correctly. d) The editor remains functional for unsupported or plain text files."
+        }
+      ],
+      "Task 2.3: Add line numbering display to the editor gutter": [
+        {
+          "step 1": "Identify the UI component designated as the 'gutter' area, typically positioned to the left of the main text editor widget. If no dedicated gutter component exists, create one (e.g., a `tk.Text`, `QTextEdit`, `tk.Canvas`, `QFrame`, or a dedicated `div` depending on the framework). Ensure it's positioned correctly relative to the editor."
+        },
+        {
+          "step 2": "Implement a function `update_line_numbers()` that calculates the required line numbers based on the content of the main editor widget. Hint: You'll likely need to get the total number of lines in the editor's content (e.g., using methods like `index('end-1c')` in Tkinter or `document().blockCount()` in PyQt)."
+        },
+        {
+          "step 3": "Inside `update_line_numbers()`, generate a string or a list of strings containing the line numbers (1, 2, 3, ... up to the total number of lines). Ensure the numbers are right-aligned and potentially padded for consistent width. Hint: Use string formatting like `str(i).rjust(width)`."
+        },
+        {
+          "step 4": "Display the generated line numbers within the gutter component. Clear any previous numbers first. Depending on the gutter widget type, this might involve setting its text content (if it's a Text widget) or drawing text onto a canvas. Hint: Disable editing capabilities for the gutter widget if it's a text-based one."
+        },
+        {
+          "step 5": "Bind the `update_line_numbers()` function to events that change the editor's content (e.g., key presses, insertions, deletions). Ensure the line numbers update dynamically as the user types or modifies the text. Hint: Look for text changed signals/events like `<KeyRelease>`, `<Modified>` (Tkinter), or `textChanged()` (PyQt)."
+        },
+        {
+          "step 6": "Implement vertical scroll synchronization between the main editor widget and the line number gutter. When the editor scrolls vertically, the gutter should scroll by the same amount. Hint: Bind to the editor's scroll events/commands and programmatically set the scroll position of the gutter (e.g., using `yview_scroll` in Tkinter or synchronizing `verticalScrollBar()` values in PyQt)."
+        },
+        {
+          "step 7": "Call `update_line_numbers()` initially when a file is loaded or the editor is populated to display the numbers for the starting content."
+        },
+        {
+          "step 8": "Refine the styling of the gutter and line numbers. Set an appropriate background color for the gutter, choose a suitable font and size for the numbers, and ensure adequate padding. Hint: Configure widget properties related to `background`, `foreground`, `font`, `padx`, `pady`, or use CSS if applicable."
+        },
+        {
+          "step 9": "(Optional Performance Enhancement) If performance issues arise with very large files, modify `update_line_numbers()` to only calculate and display line numbers corresponding to the currently visible lines in the editor viewport, plus a small buffer. This requires getting the editor's visible line range."
+        },
+        {
+          "step 10": "Manually test the line numbering feature thoroughly: check initial display, updates on typing/deleting lines (including adding/removing the very last line), scrolling synchronization (using mouse wheel, scrollbar, and keyboard navigation), and behavior with empty files and large files."
+        }
+      ],
+      "Task 2.4: Implement cursor positioning and text selection logic": [
+        {
+          "step 1": "Define or update the data structures responsible for managing the editor's state to include cursor position and selection range. Add attributes like `cursor_line`, `cursor_col`, `selection_start_line`, `selection_start_col`, `selection_end_line`, `selection_end_col`. Initialize the cursor at (0, 0) and the selection as empty (e.g., start and end positions are the same)."
+        },
+        {
+          "step 2": "Implement keyboard event handlers for basic cursor movement (ArrowUp, ArrowDown, ArrowLeft, ArrowRight). Update the `cursor_line` and `cursor_col` state based on key presses. Ensure movement respects document boundaries (first/last line, start/end of each line). Reset the selection range whenever a non-shift movement occurs. *Hint: You'll need access to the document model to know line lengths and the total number of lines.*"
+        },
+        {
+          "step 3": "Implement keyboard event handlers for Home and End keys. Home should move the cursor to the beginning of the current line (column 0). End should move the cursor to the end of the current line. Update the `cursor_col` accordingly and reset the selection."
+        },
+        {
+          "step 4": "Implement a mouse click event handler for the text area. Add logic to translate the clicked screen coordinates (X, Y) into the corresponding text coordinates (line, column). Update the `cursor_line` and `cursor_col` state to this calculated position. Reset the selection range. *Hint: This often requires querying the rendering system for character/line dimensions or using font metrics. Search for 'map screen coordinates to text position' relevant to your chosen UI framework/library.*"
+        },
+        {
+          "step 5": "Modify the editor's rendering logic to visually display the cursor at the current (`cursor_line`, `cursor_col`) position. This is typically a blinking vertical bar. Ensure it's drawn on top of the text. *Hint: Use a timer for blinking if implementing manually. Some UI frameworks provide built-in caret/cursor handling for text widgets.*"
+        },
+        {
+          "step 6": "Enhance the keyboard movement handlers (Arrows, Home, End) implemented in steps 2 & 3. Check if the Shift key is pressed during movement. If Shift is pressed, instead of resetting the selection, update the `selection_end_line` and `selection_end_col` to the new cursor position. The `selection_start_line` and `selection_start_col` should remain anchored where the selection began (or where the cursor was before the first Shift+movement). *Hint: Track the 'anchor' point of the selection separately or implicitly.*"
+        },
+        {
+          "step 7": "Implement mouse drag selection logic. Handle `MouseDown`, `MouseMove` (while button is pressed), and `MouseUp` events. On `MouseDown`, set the cursor position (as in step 4) and anchor the selection start (`selection_start_line`, `selection_start_col`) at this position. On `MouseMove` (drag), calculate the text position under the mouse and update the selection end (`selection_end_line`, `selection_end_col`) and the cursor position. `MouseUp` signifies the end of the drag operation. *Hint: Be mindful of performance during rapid MouseMove events.*"
+        },
+        {
+          "step 8": "Update the editor's rendering logic to visually highlight the selected text range defined by (`selection_start_line`, `selection_start_col`) and (`selection_end_line`, `selection_end_col`). Ensure the correct range is highlighted even if the end position comes before the start position (swap them internally for rendering/logic if needed). Handle multi-line selection highlighting correctly. *Hint: This usually involves drawing a background rectangle for the selected range(s).* "
+        },
+        {
+          "step 9": "Implement a mechanism to ensure the cursor is always visible within the editor's viewport. After any action that changes the cursor position (keyboard movement, mouse click, selection drag), check if the cursor is outside the visible area. If it is, scroll the editor view horizontally and/or vertically so the cursor becomes visible. *Hint: Add a function like `ensure_cursor_visible()` and call it after updating the cursor state.*"
+        },
+        {
+          "step 10": "Review and refactor the cursor and selection logic for clarity, correctness, and efficiency. Pay attention to edge cases like empty files, empty lines, clicking beyond the end of a line, and interactions between mouse and keyboard selection. Write unit tests for the coordinate calculation logic, cursor movement boundary conditions, and selection range updates. *Hint: Consider testing `get_position_from_coords`, `move_cursor`, `update_selection` functions independently if possible.*"
+        }
+      ],
+      "Task 2.5: Implement basic undo/redo functionality": [
+        {
+          "step 1": "Locate the primary text editor widget class within the project structure (e.g., the class responsible for displaying and editing text). Add two instance variables for history: `self.undo_stack = []` and `self.redo_stack = []`. Also add a boolean flag `self._is_performing_undo_redo = False`. Hint: Consider using `collections.deque(maxlen=100)` instead of lists for efficient fixed-size stacks."
+        },
+        {
+          "step 2": "Modify the editor initialization or the method responsible for loading content (e.g., `load_file`, `set_text`, or `__init__`). After setting the initial text content, clear both `undo_stack` and `redo_stack`, then push the initial text state onto the `undo_stack`. Example: `self.undo_stack.append(self.get_text())` (assuming `get_text()` retrieves the editor's full content)."
+        },
+        {
+          "step 3": "Implement a method `record_state_change(self)` within the editor class. This method should: 1. Check if `self._is_performing_undo_redo` is `True`. If so, return immediately. 2. Get the current text content from the editor widget. 3. Push this content onto `self.undo_stack`. 4. Clear `self.redo_stack`. 5. Hint: You might need a way to get the full text content from your specific editor widget implementation."
+        },
+        {
+          "step 4": "Identify the signal or event handler in your editor widget that fires *after* the text content has been modified by the user (e.g., key press, paste). Connect the `record_state_change` method to this signal/event. Ensure it's triggered appropriately for user edits but not during programmatic changes made by undo/redo. Hint: Depending on the GUI framework (Tkinter, PyQt, etc.), this might involve binding to events like `<<Modified>>`, `textChanged`, or handling key/input events."
+        },
+        {
+          "step 5": "Implement the `undo(self)` method in the editor class. It should: 1. Check if `self.undo_stack` has more than one state (you need at least one state to revert to, leaving the current one). 2. If yes: set `self._is_performing_undo_redo = True`. 3. Get the current text content and push it onto `self.redo_stack`. 4. Pop the latest state from `self.undo_stack` (this is the state we are reverting *from*, so pop again if needed, or adjust logic based on when state is saved). Let's adjust: Pop the top state (current) and push to redo. Then pop the *next* state (target) from undo. 5. Set the editor widget's content to this target state. 6. Set `self._is_performing_undo_redo = False`. 7. Update the enabled/disabled state of Undo/Redo UI actions (implement `update_ui_state` in the next step)."
+        },
+        {
+          "step 6": "Refine the `undo(self)` logic based on step 5's complexity. Simpler approach: Assume `undo_stack` stores *past* states. 1. Check if `undo_stack` is not empty. 2. If yes: set `self._is_performing_undo_redo = True`. 3. Get current text, push to `redo_stack`. 4. Pop state from `undo_stack`. 5. Set editor content to popped state. 6. Set `self._is_performing_undo_redo = False`. 7. Call `self.update_ui_state()`."
+        },
+        {
+          "step 7": "Implement the `redo(self)` method in the editor class. It should: 1. Check if `self.redo_stack` is not empty. 2. If yes: set `self._is_performing_undo_redo = True`. 3. Get the current text content and push it onto `self.undo_stack`. 4. Pop the latest state from `self.redo_stack`. 5. Set the editor widget's content to the popped state. 6. Set `self._is_performing_undo_redo = False`. 7. Call `self.update_ui_state()`."
+        },
+        {
+          "step 8": "Create or locate the UI actions (e.g., menu items, toolbar buttons) for 'Undo' and 'Redo'. Connect the 'Undo' action to the `editor.undo()` method and the 'Redo' action to the `editor.redo()` method. Assign standard keyboard shortcuts (e.g., Ctrl+Z for Undo, Ctrl+Y or Ctrl+Shift+Z for Redo). Hint: This depends heavily on your chosen GUI framework (e.g., `QAction` in PyQt, `menu.add_command` in Tkinter)."
+        },
+        {
+          "step 9": "Implement a method `update_ui_state(self)` in the editor class (or potentially the main window class if it manages actions). This method should check if `self.undo_stack` is empty (or contains only the initial state depending on your implementation) and disable the 'Undo' action accordingly. It should also check if `self.redo_stack` is empty and disable the 'Redo' action accordingly. Ensure actions are enabled otherwise. Call this method at the end of `undo`, `redo`, `record_state_change`, and after initial content loading."
+        },
+        {
+          "step 10": "Write unit tests for the undo/redo logic. Create an instance of your editor component (or a mock version), simulate text changes by calling `record_state_change` (or simulating the events that trigger it), call `undo` and `redo`, and assert that the editor content and the state of the `undo_stack` and `redo_stack` are correct after each operation. Focus on edge cases like empty stacks, reaching the end of the history, and new changes clearing the redo stack."
+        }
+      ],
+      "Task 2.6: Implement editor scrolling (vertical and horizontal)": [
+        {
+          "step 1": "Identify the primary text display widget within the editor component code. Determine if this widget natively supports scrollbars or if it needs to be embedded within a scrollable container provided by the GUI framework (e.g., Tkinter's `Scrollbar` with `Text`, PyQt's `QScrollArea`, etc.)."
+        },
+        {
+          "step 2": "Implement vertical scrolling for the editor's text area. If the widget has built-in support, configure it. If not, create a vertical scrollbar widget and link its behavior to the vertical scrolling of the text area widget. Ensure the scrollbar automatically appears when the content exceeds the visible height and disappears otherwise (if supported by the framework). Hint: Look for methods like `yscrollcommand`, `set`, `setVerticalScrollBarPolicy`, or similar, depending on your framework."
+        },
+        {
+          "step 3": "Test the vertical scrolling implementation by loading a file with more lines than can fit in the editor's visible area. Verify that the scrollbar appears, is functional (mouse wheel, dragging the thumb), and accurately reflects the position within the file."
+        },
+        {
+          "step 4": "Implement horizontal scrolling for the editor's text area. First, ensure that line wrapping in the text widget is disabled, as horizontal scrolling is typically used for long lines that should not wrap. Hint: Look for configuration options like `wrap='none'` (Tkinter) or `setLineWrapMode(QTextEdit.NoWrap)` (PyQt)."
+        },
+        {
+          "step 5": "Configure or add a horizontal scrollbar widget. Link its behavior to the horizontal scrolling of the text area widget. Ensure it appears only when the content width exceeds the visible width. Hint: Look for methods like `xscrollcommand`, `set`, `setHorizontalScrollBarPolicy`, or similar."
+        },
+        {
+          "step 6": "Test the horizontal scrolling implementation by loading or typing lines longer than the editor's visible width. Verify that line wrapping is off, the horizontal scrollbar appears, and it functions correctly."
+        },
+        {
+          "step 7": "If your editor implementation includes a separate line number display area, implement synchronization between the vertical scrolling of the main text area and the line number display. Ensure that scrolling the text area vertically also scrolls the line numbers correspondingly. Hint: This often involves connecting the scroll event/signal of the text area's scrollbar to a method that updates the view of the line number area."
+        },
+        {
+          "step 8": "Perform comprehensive testing: Load files of various sizes (small, medium, large) and with different line length characteristics (short lines, long lines, mixed). Verify smooth scrolling performance, correct scrollbar visibility, and accurate synchronization (if applicable) in all scenarios. Refactor the scrolling implementation code for clarity and robustness."
+        }
+      ],
+      "Task 2.7: Develop file tree view component": [
+        {
+          "step 1": "Create the necessary file(s) for the file tree view component. Depending on the framework in use (e.g., React, Vue, Angular, or vanilla JS), this might involve creating component files (e.g., `FileTreeView.js`/`.jsx`/`.tsx`/`.vue`), template files (HTML), and styling files (CSS/SCSS). Create a basic container element within the component's template."
+        },
+        {
+          "step 2": "Define a mock data structure representing a hierarchical file system. Use an array of objects, where each object represents a file or folder. Include properties like `name` (string), `type` ('file' or 'folder'), and `children` (an array of similar objects, only for folders). Store this mock data within the component for initial rendering."
+        },
+        {
+          "step 3": "Implement the rendering logic to display the file tree based on the mock data. Use a recursive approach (either via a recursive function call or recursive component rendering, depending on the framework) to handle nested folders and files. Display the `name` of each item. Use appropriate HTML elements like `ul` and `li` to represent the hierarchy."
+        },
+        {
+          "step 4": "Apply basic CSS styling to the file tree. Add rules for indentation to visually represent the hierarchy levels (e.g., using padding-left on nested `ul` or `li` elements). Ensure clear visual distinction between file and folder items (e.g., font weight or icons later). Add basic spacing and list styling removal (e.g., `list-style-type: none`)."
+        },
+        {
+          "step 5": "Implement state management within the component to track the expansion state (expanded/collapsed) of each folder. Initialize all folders to a collapsed state by default."
+        },
+        {
+          "step 6": "Add click event handlers to the folder items. When a folder is clicked, toggle its expansion state in the component's state. Update the rendering logic to conditionally display (or hide) the children (`ul` containing nested items) of a folder based on its current expansion state."
+        },
+        {
+          "step 7": "Implement state management to track the currently selected file. Add a state variable to store the identifier (e.g., path or unique ID) of the selected file. Initialize it to null or empty."
+        },
+        {
+          "step 8": "Add click event handlers to the file items. When a file item is clicked, update the 'selected file' state with the identifier of that file. Apply a distinct visual style (e.g., background color or font weight) to the currently selected file item using CSS, based on the component's state."
+        },
+        {
+          "step 9": "Modify the file item click handler to emit an event when a file is selected. Use the browser's `CustomEvent` API or the framework's specific event emission mechanism. The event should signal that a file has been selected and include the file's identifier (e.g., path) in the event detail. Name the event something descriptive like `file-selected` or `fileOpenRequest`."
+        },
+        {
+          "step 10": "Integrate icons into the file tree view. Choose an icon library (e.g., Material Icons, Font Awesome, Lucide) or use SVG icons. Display appropriate icons next to each item: one for files, one for collapsed folders, and one for expanded folders. Update the rendering logic to include these icons and toggle folder icons based on their expansion state."
+        },
+        {
+          "step 11": "Define an asynchronous function (e.g., `fetchDirectoryData`) responsible for fetching the file system structure. Initially, this function can return the mock data structure defined earlier, wrapped in a Promise to simulate network latency. Update the component to call this function (e.g., when it mounts or loads) instead of using the hardcoded mock data directly. *Hint: This function will serve as the placeholder for future integration with a backend API or file system access layer.*"
+        },
+        {
+          "step 12": "Review and refactor the `FileTreeView` component code. Ensure clarity, add comments explaining complex logic (recursion, state management, event handling), improve variable names, and check for adherence to project coding standards. Consider potential edge cases, such as empty folders or very deep nesting."
+        }
+      ],
+      "Task 2.8: Implement logic to read and display directory structures in the file tree": [
+        {
+          "step 1": "Define a backend API endpoint (e.g., `GET /api/filesystem/list`) that accepts a query parameter `path` representing the directory path to list. Ensure this endpoint is added to your existing backend router/server setup (e.g., Express router). Hint: Use Node.js `path.join` to safely construct file system paths and validate the input `path` to prevent directory traversal vulnerabilities."
+        },
+        {
+          "step 2": "Implement the logic for the `GET /api/filesystem/list` endpoint. Use the Node.js `fs.readdir` function with the `withFileTypes` option set to `true` to read the contents of the directory specified by the `path` parameter. For each `Dirent` object returned, determine its name and whether it's a directory or a file. Hint: `dirent.isDirectory()` and `dirent.name` will be useful."
+        },
+        {
+          "step 3": "Structure the response of the API endpoint as a JSON array of objects. Each object should represent a file or directory and contain at least `name` (string), `isDirectory` (boolean), and `path` (string - the full path relative to the project root or a designated workspace root). Sort the results alphabetically, perhaps with directories listed before files."
+        },
+        {
+          "step 4": "Implement robust error handling within the backend API endpoint. Handle cases like the path not existing, not being a directory, or permission errors (EACCES). Return appropriate HTTP status codes (e.g., 404, 400, 500) and informative JSON error messages."
+        },
+        {
+          "step 5": "Identify the frontend component responsible for rendering the file tree (e.g., `FileTree.jsx`, `FileExplorer.vue`). Add state management (e.g., React `useState`, Vue `ref`) to hold the directory structure data. The structure should allow for nested nodes, representing directories containing files and subdirectories. Initialize it to represent the root directory (e.g., `{ path: '/', name: 'root', isDirectory: true, children: [], loaded: false }`)."
+        },
+        {
+          "step 6": "Create an asynchronous function within the file tree component (e.g., `fetchDirectoryContents(nodePath)`) that uses the `fetch` API or a library like `axios` to call the backend `GET /api/filesystem/list` endpoint, passing the `nodePath` as the `path` query parameter."
+        },
+        {
+          "step 7": "Implement the initial data loading logic. When the file tree component mounts, call `fetchDirectoryContents` for the root directory path (e.g., '/'). Update the component's state with the fetched children for the root node and mark it as loaded."
+        },
+        {
+          "step 8": "Update the rendering logic of the file tree component to recursively display the nodes stored in its state. For each node, display its name. Use distinct visual cues (e.g., icons from a library like `react-icons` or `material-icons`) to differentiate between files and directories. Hint: A recursive component structure might be helpful here."
+        },
+        {
+          "step 9": "Implement folder expansion and collapse functionality. Add click handlers to directory nodes. When a directory node is clicked: if it's expanded, collapse it (hide children); if it's collapsed and its contents haven't been loaded yet, call `fetchDirectoryContents` for its path, update the state with the fetched children, and then expand it (show children); if it's collapsed and already loaded, simply expand it."
+        },
+        {
+          "step 10": "Add visual feedback during data loading. Display a loading indicator (e.g., a spinner) next to a directory node while its contents are being fetched via the API. Handle and display errors received from the backend API within the UI (e.g., show an alert or a message next to the affected node)."
+        },
+        {
+          "step 11": "Refactor the file tree component and the backend endpoint code for clarity, efficiency, and adherence to project conventions. Ensure state updates in the frontend are handled correctly (e.g., immutably if using React). Consider adding comments for complex logic."
+        }
+      ],
       "Task 2.9: Implement file opening mechanism (load file content into editor instance)": [],
       "Task 2.10: Implement file saving mechanism (write editor content back to disk)": [],
       "Task 2.11: Develop UI for managing multiple open files (e.g., tabs)": [],
@@ -408,5 +650,5 @@
     "Phase 8: Packaging, Documentation, and Release": {}
   },
   "last_processed_phase": "Phase 2: Core Editor and Workspace Implementation",
-  "last_processed_task": null
+  "last_processed_task": "Task 2.8: Implement logic to read and display directory structures in the file tree"
 }

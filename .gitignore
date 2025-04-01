@@ -9,3 +9,6 @@ hierarchical_planner/logs/
 # Testing artifacts
 .pytest_cache/
 .coverage
+
+# Generated Persona Builder Outputs
+hierarchical_planner/persona_builder/generated_outputs_llm/*

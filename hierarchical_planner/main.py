@@ -31,8 +31,9 @@ from .exceptions import (
     HierarchicalPlannerError, ConfigError, FileProcessingError,
     FileNotFoundError as PlannerFileNotFoundError, # Alias to avoid conflict
     FileReadError, FileWriteError, PlanGenerationError, PlanValidationError,
-    JsonSerializationError, ApiCallError, JsonProcessingError # Added JsonProcessingError
+    JsonSerializationError, ApiCallError, JsonProcessingError, ProjectBuilderError # Added ProjectBuilderError
 )
+from .project_builder import ProjectBuilder # Import ProjectBuilder
 
 # --- Load Configuration ---
 try:
@@ -502,23 +503,74 @@ if __name__ == "__main__":
         action="store_true",
         help="Don't resume from checkpoints if they exist."
     )
+    parser.add_argument(
+        "--build",
+        action="store_true",
+        help="Run the Project Builder using a generated reasoning tree."
+    )
+    parser.add_argument(
+        "--project-dir",
+        type=str,
+        default=CONFIG['files'].get('default_project_dir', 'generated_project'), # Get from config or default
+        help="Directory where the project will be built (default: generated_project or from config)."
+    )
 
     args = parser.parse_args()
 
-    # Run the main workflow, passing resolved paths from args
-    try:
-        logger.info("Starting main workflow...")
-        asyncio.run(main_workflow(
-            task_file=args.task_file,
-            output_file=args.output_file,
-            validated_output_file=args.validated_output_file,
-            skip_qa=args.skip_qa,
-            config=CONFIG,
-            skip_resume=args.no_resume
-        ))
-    except HierarchicalPlannerError as e:
-        logger.critical(f"Application error at top level: {e}", exc_info=True)
-        sys.exit(1)
-    except Exception as e:
-        logger.critical(f"Unhandled exception at top level: {e}", exc_info=True)
-        sys.exit(1)
+    # Decide whether to run the planning workflow or the build workflow
+    if args.build:
+        # --- Project Build Workflow ---
+        logger.info("Starting Project Build workflow...")
+        try:
+            # Determine which reasoning tree file to use
+            # Use validated if it exists and QA wasn't skipped, otherwise use the initial output
+            reasoning_tree_input = args.output_file
+            if not args.skip_qa and os.path.exists(args.validated_output_file):
+                reasoning_tree_input = args.validated_output_file
+                logger.info(f"Using validated reasoning tree: {reasoning_tree_input}")
+            elif not os.path.exists(reasoning_tree_input):
+                 logger.error(f"Reasoning tree file not found for building: {reasoning_tree_input}")
+                 raise PlannerFileNotFoundError(f"Reasoning tree file not found: {reasoning_tree_input}")
+            else:
+                 logger.info(f"Using initial reasoning tree: {reasoning_tree_input}")
+
+            # Ensure project_dir is absolute
+            project_dir_abs = os.path.abspath(args.project_dir)
+
+            # Instantiate and run the builder
+            # NOTE: ProjectBuilder currently uses simulation logic.
+            # Real execution requires integrating tool calls.
+            builder = ProjectBuilder(
+                reasoning_tree_path=reasoning_tree_input,
+                config_path='../config/config.yaml', # Assuming config path relative to main.py location
+                project_dir=project_dir_abs
+            )
+            builder.build() # This currently runs the simulation
+
+            logger.info("Project Build workflow finished.")
+
+        except (ProjectBuilderError, PlannerFileNotFoundError, ConfigError) as e:
+             logger.critical(f"Project build failed: {e}", exc_info=True)
+             sys.exit(1)
+        except Exception as e:
+             logger.critical(f"Unhandled exception during project build: {e}", exc_info=True)
+             sys.exit(1)
+
+    else:
+        # --- Plan Generation/Validation Workflow ---
+        logger.info("Starting Plan Generation/Validation workflow...")
+        try:
+            asyncio.run(main_workflow(
+                task_file=args.task_file,
+                output_file=args.output_file,
+                validated_output_file=args.validated_output_file,
+                skip_qa=args.skip_qa,
+                config=CONFIG,
+                skip_resume=args.no_resume
+            ))
+        except HierarchicalPlannerError as e:
+            logger.critical(f"Application error during plan generation/validation: {e}", exc_info=True)
+            sys.exit(1) # Exit after logging the specific error
+        except Exception as e:
+            logger.critical(f"Unhandled exception during plan generation/validation: {e}", exc_info=True)
+            sys.exit(1) # Exit after logging the general error

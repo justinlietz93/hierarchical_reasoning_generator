@@ -1,6 +1,6 @@
 google-generativeai
 python-dotenv
-PyYAML
+PyYAML>=6.0 # Specify version for safety, ensure it's installed
 pytest
 openai
 anthropic

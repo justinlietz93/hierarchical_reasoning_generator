@@ -8,16 +8,15 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from .config_loader import ConfigLoader
-from .gemini_client import GeminiClient
+from config_loader import load_config
+# from gemini_client import GeminiClient  # Not used in current implementation
 # Assuming DeepSeekV3Client exists or is handled by UniversalLLMClient
-# from .deepseek_v3_client import DeepSeekV3Client
-from .universal_LLM_client import UniversalLLMClient
-from .exceptions import ProjectBuilderError, LLMClientError, ValidationError
-from .logger_setup import LoggerSetup
+# from deepseek_v3_client import DeepSeekV3Client  # Not used in current implementation
+from universal_LLM_client import UniversalLLMClient
+from exceptions import ProjectBuilderError, LLMClientError, ValidationError
+from logger_setup import setup_logging
 
-# Configure logging
-LoggerSetup.setup_logging()
+# Configure logging will be done when config is available
 logger = logging.getLogger(__name__)
 
 class ProjectBuilder:
@@ -40,9 +39,10 @@ class ProjectBuilder:
         self.project_dir = Path(project_dir)
         self.project_dir.mkdir(parents=True, exist_ok=True) # Ensure project dir exists
 
-        self.config_loader = ConfigLoader(config_path)
-        self.config = self.config_loader.load_config()
-        self.llm_config = self.config_loader.load_llm_config() # Assuming llm_config.json exists
+        # Load configuration directly using the load_config function
+        self.config = load_config(config_path)
+        # For now, assume llm_config is part of the main config or use defaults
+        self.llm_config = self.config.get('llm', {})
 
         # TODO: Select clients based on config (Gemini for execution, DeepSeek for validation)
         # For now, using UniversalLLMClient placeholders

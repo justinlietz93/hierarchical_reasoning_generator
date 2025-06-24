@@ -4,10 +4,25 @@ api:
   # API Key: Can be the key itself, an environment variable name (e.g., GEMINI_API_KEY),
   # or null/empty to rely solely on the environment variable.
   key: GEMINI_API_KEY
-  model_name: gemini-2.5-pro-exp-03-25 # User requested model
-  temperature: 0.7
+  model_name: gemini-2.5-pro # User requested model
+  temperature: 0.5
   max_output_tokens: 8192
   retries: 3 # Number of retries for API calls
+
+# Anthropic configuration
+anthropic:
+  # API Key for Anthropic API
+  api_key: ANTHROPIC_API_KEY
+  model_name: claude-3-7-sonnet-20250219
+  temperature: 0.7
+  max_tokens: 8192
+  retries: 3
+  # Extended thinking configuration
+  extended_thinking: true
+  thinking_min_tokens: 1024
+  thinking_max_tokens: 8192
+  # Optional system prompt
+  system_prompt: "You are a helpful AI assistant that breaks down complex tasks into structured steps."
 
 # DeepSeek fallback configuration
 deepseek:

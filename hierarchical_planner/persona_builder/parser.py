@@ -22,17 +22,23 @@ if str(project_root) not in sys.path:
 
 # Use absolute imports assuming the package is installed/accessible
 try:
-    # Import the existing Gemini client functions and exceptions
-    from hierarchical_planner import gemini_client
+    # Import the exceptions
     from hierarchical_planner.exceptions import HierarchicalPlannerError, ApiCallError, JsonParsingError, ApiResponseError
+    # Import the LLM selector
+    from hierarchical_planner.persona_builder.llm_selector import select_llm_client
+    # Import the LLM clients for initialization
+    from hierarchical_planner import gemini_client
+    from hierarchical_planner import anthropic_client
 except ImportError as e:
     print(f"Import Error in parser.py: {e}. Ensure hierarchical_planner package is installed or in PYTHONPATH.")
     # Define dummy classes/exceptions if imports fail completely
     gemini_client = None
+    anthropic_client = None
     HierarchicalPlannerError = Exception
     ApiCallError = Exception
     JsonParsingError = Exception
     ApiResponseError = Exception
+    select_llm_client = None
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -147,24 +153,29 @@ class PersonaParser:
 
         Args:
             config (Dict[str, Any]): The main application configuration dictionary,
-                                     which includes API settings needed by the gemini_client.
+                                     which includes API settings needed by the LLM clients.
         """
-        if not gemini_client:
-            raise PersonaParserError("Gemini client module could not be imported.")
+        if not gemini_client and not anthropic_client:
+            raise PersonaParserError("LLM client modules could not be imported.")
         if not config:
              raise PersonaParserError("Configuration dictionary is required.")
 
         self.config = config
-        # Configure the gemini client using the provided config
-        # This ensures the API key is set up before trying to get the model
+        # Configure the LLM clients using the provided config
         try:
-            gemini_client.configure_client(config.get('api', {}).get('resolved_key'))
-            # Optionally configure DeepSeek fallback if needed for parsing
-            if 'deepseek' in config:
-                 gemini_client.configure_deepseek_fallback(config)
+            # Configure Gemini client
+            if gemini_client:
+                gemini_client.configure_client(config.get('api', {}).get('resolved_key'))
+                # Optionally configure DeepSeek fallback if needed for parsing
+                if 'deepseek' in config:
+                    gemini_client.configure_deepseek_fallback(config)
+            
+            # Configure Anthropic client
+            if anthropic_client and 'anthropic' in config:
+                anthropic_client.configure_client(config.get('anthropic', {}).get('api_key'))
         except Exception as e:
              # Log the error but allow initialization to continue; model fetching will fail later if needed
-             logger.error(f"Error configuring gemini_client during PersonaParser init: {e}")
+             logger.error(f"Error configuring LLM clients during PersonaParser init: {e}")
              # Depending on requirements, could raise PersonaParserError here
 
         # Determine the model to use for parsing.
@@ -174,7 +185,7 @@ class PersonaParser:
         logger.info(f"PersonaParser initialized, will use model: {self.parsing_model_name}")
 
 
-    async def parse(self, text: str) -> Dict[str, Any]: # Make method async
+    async def parse(self, text: str) -> Dict[str, Any]:
         """
         Parse persona card text into a structured JSON format using an LLM.
 
@@ -192,21 +203,22 @@ class PersonaParser:
 
         prompt = PERSONA_PARSING_PROMPT.format(persona_card_text=text)
 
-        logger.info(f"Sending persona card text to Gemini model ({self.parsing_model_name}) for parsing...")
+        logger.info(f"Sending persona card text to LLM for parsing...")
 
         try:
-            # Use the existing gemini_client's structured content generation
-            # Ensure the config passed contains necessary API settings
-            # We might need to temporarily override the model name if persona_parsing_model is different
+            # Prepare config for parsing
             parse_config = self.config.copy()
             if 'api' in parse_config:
-                 parse_config['api'] = parse_config['api'].copy() # Avoid modifying original config
-                 parse_config['api']['model_name'] = self.parsing_model_name
-                 # Adjust other generation params if needed for parsing
-                 parse_config['api']['temperature'] = 0.2 # Lower temp for JSON
+                parse_config['api'] = parse_config['api'].copy() # Avoid modifying original config
+                parse_config['api']['model_name'] = self.parsing_model_name
+                # Adjust other generation params if needed for parsing
+                parse_config['api']['temperature'] = 0.2 # Lower temp for JSON
+            
+            # Select the appropriate LLM client
+            _, _, call_with_retry = await select_llm_client(parse_config)
 
-            # Use call_gemini_with_retry which handles retries and fallback
-            parsed_json = await gemini_client.call_gemini_with_retry(
+            # Use the selected LLM client to parse the persona card
+            parsed_json = await call_with_retry(
                 prompt_template=PERSONA_PARSING_PROMPT, # Use the template directly
                 context={"persona_card_text": text},    # Provide context
                 config=parse_config,                    # Pass the (potentially modified) config
@@ -214,14 +226,13 @@ class PersonaParser:
             )
             logger.debug("LLM response received and parsed successfully.")
 
-        except (ApiCallError, ApiResponseError, JsonParsingError) as e: # Removed JsonProcessingError again
+        except (ApiCallError, ApiResponseError, JsonParsingError) as e:
             logger.error(f"LLM call/parsing failed during persona parsing: {e}")
             raise PersonaParserError(f"LLM call/parsing failed: {e}") from e
         except Exception as e:
             logger.error(f"Unexpected error during LLM call: {e}", exc_info=True)
             raise PersonaParserError(f"Unexpected LLM error: {e}") from e
 
-        # The call_gemini_with_retry function already handles JSON parsing and cleaning
         # Basic validation
         if not isinstance(parsed_json, dict) or "sections" not in parsed_json or not isinstance(parsed_json["sections"], dict):
             logger.warning(f"LLM response JSON missing 'sections' dictionary or invalid structure: {parsed_json}")

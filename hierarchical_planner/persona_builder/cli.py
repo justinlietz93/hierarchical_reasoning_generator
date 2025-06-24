@@ -30,6 +30,8 @@ try:
     from hierarchical_planner.persona_builder.markdown_generator import MarkdownGenerator # Import new generator
     from hierarchical_planner.persona_builder.output_saver import OutputSaver # Import saver
     from hierarchical_planner.config_loader import load_config
+    # Import the LLM selector
+    from hierarchical_planner.persona_builder.llm_selector import select_llm_client
 except ImportError as e:
     print(f"Import Error in cli.py: {e}. Ensure hierarchical_planner package and PyYAML are installed or in PYTHONPATH.")
     sys.exit(1)

@@ -14,12 +14,18 @@ import os
 from typing import Dict, Any, Optional, List, Tuple
 
 # Local imports
-from .gemini_client import call_gemini_with_retry # Assuming refactored location
-from .checkpoint_manager import CheckpointManager # Import the checkpoint manager
-from .exceptions import (
+from checkpoint_manager import CheckpointManager # Import the checkpoint manager
+# Import client functions directly to avoid circular import
+from gemini_client import generate_structured_content as gemini_generate_structured_content
+from gemini_client import generate_content as gemini_generate_content
+from gemini_client import call_gemini_with_retry
+from anthropic_client import generate_structured_content as anthropic_generate_structured_content
+from anthropic_client import generate_content as anthropic_generate_content
+from anthropic_client import call_anthropic_with_retry
+
+from exceptions import (
     FileProcessingError, PlannerFileNotFoundError, FileReadError, FileWriteError,
-    JsonParsingError, JsonSerializationError, PlanValidationError, ApiCallError,
-    ConfigError # Added ConfigError
+    JsonSerializationError, JsonProcessingError, PlanValidationError, ApiCallError
 )
 
 
@@ -147,7 +153,8 @@ def validate_plan_structure(plan_data: dict) -> list[str]:
 async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str, Any], 
                                    resume: bool = True, 
                                    input_path: str = None,
-                                   output_path: str = None) -> dict:
+                                   output_path: str = None,
+                                   provider: Optional[str] = None) -> dict:
     """
     Uses Gemini to analyze alignment, identify resources, and annotate the plan.
 
@@ -273,6 +280,33 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                 if "qa_info" not in step_obj:
                     step_obj["qa_info"] = {}
 
+                # Select the appropriate LLM client based on provider preference
+                if provider and provider.lower() == 'gemini':
+                    if 'api' in config and config.get('api', {}).get('resolved_key'):
+                        logger.debug("Using Gemini client for QA validation (user specified).")
+                        call_with_retry = call_gemini_with_retry
+                    else:
+                        logger.warning("Gemini provider requested but API key not configured. Falling back to auto-selection.")
+                        call_with_retry = call_anthropic_with_retry if 'anthropic' in config and config.get('anthropic', {}).get('api_key') else call_gemini_with_retry
+                elif provider and provider.lower() == 'anthropic':
+                    if 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
+                        logger.debug("Using Anthropic client for QA validation (user specified).")
+                        call_with_retry = call_anthropic_with_retry
+                    else:
+                        logger.warning("Anthropic provider requested but API key not configured. Falling back to auto-selection.")
+                        call_with_retry = call_gemini_with_retry if 'api' in config and config.get('api', {}).get('resolved_key') else call_anthropic_with_retry
+                else:
+                    # Auto-selection logic (prioritize Gemini if available)
+                    if 'api' in config and config.get('api', {}).get('resolved_key'):
+                        logger.debug("Using Gemini client for QA validation (auto-selected).")
+                        call_with_retry = call_gemini_with_retry
+                    elif 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
+                        logger.debug("Using Anthropic client for QA validation (auto-selected).")
+                        call_with_retry = call_anthropic_with_retry
+                    else:
+                        logger.debug("Defaulting to Gemini client for QA validation.")
+                        call_with_retry = call_gemini_with_retry
+                
                 # 1. Resource/Action Identification (skip if already done)
                 if "resource_analysis" not in step_obj["qa_info"] and "resource_analysis_error" not in step_obj["qa_info"]:
                     try:
@@ -283,7 +317,7 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                             "prompt_text": step_prompt
                         }
                         # Pass config to retry function
-                        resource_analysis = await call_gemini_with_retry(
+                        resource_analysis = await call_with_retry(
                             RESOURCE_IDENTIFICATION_PROMPT, resource_context, config, is_structured=True
                         )
                         step_obj["qa_info"]["resource_analysis"] = resource_analysis
@@ -318,7 +352,7 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                             "steps_json": json.dumps({prompt_key: step_prompt}, indent=2) # Analyze one step
                         }
                          # Pass config to retry function
-                        alignment_critique = await call_gemini_with_retry(
+                        alignment_critique = await call_with_retry(
                             ALIGNMENT_CHECK_PROMPT, alignment_context, config, is_structured=True
                         )
                         step_obj["qa_info"]["step_critique"] = alignment_critique
@@ -358,7 +392,7 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
 
 # --- Main Execution ---
 
-async def run_validation(input_path: str, output_path: str, config: Dict[str, Any], resume: bool = True):
+async def run_validation(input_path: str, output_path: str, config: Dict[str, Any], resume: bool = True, provider: Optional[str] = None):
     """
     Orchestrates the QA validation workflow.
 
@@ -453,7 +487,8 @@ async def run_validation(input_path: str, output_path: str, config: Dict[str, An
             config,
             resume=resume,
             input_path=input_path,
-            output_path=output_path
+            output_path=output_path,
+            provider=provider
         )
         logger.info("Plan analysis and annotation complete.")
     except ApiCallError:

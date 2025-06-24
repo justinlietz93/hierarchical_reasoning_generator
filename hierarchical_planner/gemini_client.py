@@ -13,9 +13,9 @@ from typing import Dict, Any
 # from google.generativeai.types import generation_types 
 
 # Local imports for exceptions
-from .exceptions import ApiKeyError, ApiCallError, ApiResponseError, ApiBlockedError, JsonParsingError, JsonProcessingError
+from exceptions import ApiKeyError, ApiCallError, ApiResponseError, ApiBlockedError, JsonParsingError, JsonProcessingError
 # Import DeepSeek client for fallback
-from . import deepseek_v3_client
+import deepseek_v3_client
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)

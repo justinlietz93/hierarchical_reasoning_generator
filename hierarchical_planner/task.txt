@@ -1,0 +1,99 @@
+1.0 System Overview & Core Philosophy
+This document outlines the architecture for a complete, end-to-end autonomous software development framework. The system's primary objective is to translate a high-level, natural language user requirement into a fully implemented, verifiable, and production-ready software project.
+
+The core philosophy is a direct rejection of naive, single-shot code generation. Instead, the framework operates as a multi-stage, "factory assembly line," where an ambiguous initial concept is progressively refined into a deterministic and verifiable set of components. This approach is designed to manage the inherent non-determinism and cognitive limitations of Large Language Models (LLMs) by enforcing strict process controls, contracts, and verification at every stage.
+
+The system is built on five foundational principles:
+
+Hierarchical Decomposition: A complex problem is broken down top-down into a tree of manageable parts (Goal -> Phases -> Tasks -> Steps), creating a structured plan before any implementation is considered.
+
+Contract-First Design: A formal, machine-readable "contract" is generated for each software module. This contract defines the module's public interface, dependencies, and internal logic requirements, serving as an immutable blueprint.
+
+Parallel, Isolated Execution: Independent modules defined by the contract are built simultaneously by specialized AI agents, each working in isolation with only the knowledge of its own contract. This maximizes speed and prevents contextual errors from cascading.
+
+Test-Driven Correction: Code generation is not considered complete until it passes an objective, automated verification step. Generated code is paired with a test suite, executed in a sandbox, and if tests fail, a specialized "corrector" agent uses the formal test report to debug and fix the code.
+
+Schema-Enforced Communication: All communication from AI agents back to the orchestrator (e.g., plans, code) is strictly governed by JSON schemas, ensuring reliability and eliminating parsing errors.
+
+2.0 System Architecture and Workflow
+The framework is architected as a sequential pipeline of four primary stages, each with a distinct purpose and set of agents.
+
+Stage 0: Hierarchical Planning (The Strategic Planner)
+This stage is based on the robust logic of your "Hierarchical Planner" project. Its goal is to transform a vague user goal into a detailed, procedural plan.
+
+Input: A high-level user goal (e.g., "Build a real-time chat application with a React frontend").
+
+Process: The orchestrator uses a series of prompts to guide a "Planner" LLM through a top-down decomposition:
+
+Goal to Phases: The initial goal is broken down into major project phases (e.g., "Phase 1: Project Setup and Backend API," "Phase 2: Frontend UI and WebSocket Integration").
+
+Phase to Tasks: Each phase is then broken down into a list of concrete tasks (e.g., "Task 1.1: Define API Endpoints," "Task 1.2: Set up Database Schema").
+
+Task to Steps: Each task is further decomposed into a sequence of detailed, actionable steps that a developer would follow (e.g., for "Define API Endpoints": "Step 1: Define a POST /login endpoint...", "Step 2: Define a GET /messages endpoint...").
+
+Key Features: This stage utilizes the checkpointing and multi-client support from your existing planner for resilience and flexibility.
+
+Output: A detailed procedural plan (the reasoning_tree.json artifact), which provides the rich, detailed context needed for the next stage.
+
+Stage 1: Contract Generation (The Interface Architect)
+This stage translates the procedural plan from Stage 0 into a formal, declarative architecture.
+
+Input: The reasoning_tree.json procedural plan.
+
+Process:
+
+An Interface Architect agent analyzes the entire reasoning tree. It identifies logical groupings of functionality described in the tasks and steps to define a set of independent software modules.
+
+For each identified module, it populates a strict JSON object conforming to the ModuleContract schema. This involves:
+
+Defining the module's name and purpose.
+
+Formalizing the functionSignatures, dataStructures, and publicAPI.
+
+Crucially, determining the dependencies and constructorParams by analyzing the interactions described in the reasoning tree.
+
+Translating the detailed procedural steps from the reasoning tree into the promptInstructions and acceptanceTests fields of the contract.
+
+Post-Generation Validation: After the AI generates the complete contract document, the orchestrator performs a series of critical automated checks:
+
+Schema Adherence: Verifies the output is valid JSON conforming to the CONTRACT_DOCUMENT_SCHEMA.
+
+Internal Consistency: Checks that dependencies and constructorParams are consistent within each module.
+
+Architectural Integrity (Graph Validation): Verifies that every dependency listed for a module corresponds to another module that is actually defined in the contract document. It also performs a basic cross-module signature check based on the promptInstructions.
+
+Output: A validated ModuleContract[] JSON document. This document is the immutable source of truth for the rest of the build process.
+
+Stage 2: Parallel Module Implementation (The Factory Floor)
+This stage executes the build plan, generating the source code for each module.
+
+Input: The validated ModuleContract[] document.
+
+Process:
+
+The orchestrator reads the contract document and spawns a swarm of Module Builder agents, one for each module contract. These requests are sent in parallel.
+
+Each Module Builder receives a highly detailed prompt containing its specific contract and the contextual "System Context" and "CRITICAL RULES" we developed, instructing it to act as a specialist on a team and to write production-ready, dependency-injected code.
+
+The agent returns a JSON object containing two strings: the implementationCode and the testCode.
+
+Output: A collection of generated modules (code and tests), ready for verification.
+
+Stage 3: Verification, Correction, and Integration
+This is the Quality Assurance and Final Assembly stage, which closes the autonomous loop.
+
+Input: The collection of generated modules.
+
+Process:
+
+Verification: For each module, the system will eventually pass its implementationCode and testCode to a sandboxed execution environment. A real test runner (e.g., Jest) is executed. The structured results (pass/fail, error messages, stack traces) are captured. (This is currently the conceptual "Final Frontier" of the implementation).
+
+Correction Loop: If a module fails verification, the orchestrator triggers a Corrector agent. This agent is given the module's contract, the faulty code, and the formal test report from the sandbox. It attempts to fix the code, and the result is re-submitted for verification. This loop continues for a set number of retries.
+
+Dependency Failure Propagation: After all modules have either passed verification or failed definitively, the orchestrator performs a final check. If any module failed, all other modules that depend on it are also marked as failed.
+
+Integration: An Integrator agent receives the final list of verified, successful modules and the original contract document. It performs a topological sort on the dependency graph and generates the main entry point file (main.ts), correctly importing and instantiating all modules with their dependencies.
+
+Final Assembly: The Integrator also generates supporting files like the README.md, package.json, and tsconfig.json. The entire project is then assembled into the correct file structure.
+
+Output: A complete, downloadable project archive (.zip) containing the source code, tests, and configuration files.

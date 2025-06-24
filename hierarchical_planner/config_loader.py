@@ -11,10 +11,13 @@ import logging
 from typing import Dict, Any, Optional
 
 # Local imports for exceptions
-from .exceptions import ConfigError, ConfigNotFoundError, ConfigParsingError, ApiKeyError
+from exceptions import ConfigError, ConfigNotFoundError, ConfigParsingError, ApiKeyError
 
 # Load .env file if present (for API key primarily)
-load_dotenv()
+# Load from the same directory as this script
+script_dir = os.path.dirname(__file__)
+dotenv_path = os.path.join(script_dir, '.env')
+load_dotenv(dotenv_path)
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -27,6 +30,16 @@ DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
         'temperature': 0.7,
         'max_output_tokens': 8192,
         'retries': 3
+    },
+    'anthropic': {
+        'api_key': 'ANTHROPIC_API_KEY', # Default to checking this env var
+        'model_name': 'claude-3-7-sonnet-20250219',
+        'temperature': 0.7,
+        'max_tokens': 8192,
+        'retries': 3,
+        'extended_thinking': True,
+        'thinking_min_tokens': 1024,
+        'thinking_max_tokens': 8192
     },
     'deepseek': {
         'api_key': 'DEEPSEEK_API_KEY', # Default to checking this env var
@@ -158,6 +171,18 @@ def load_config(config_path: str = 'config/config.yaml') -> Dict[str, Any]:
     # Avoid logging the key itself unless debugging
     logger.info("Gemini API key resolved successfully.")
 
+    # Resolve the Anthropic API key if it exists in config
+    if 'anthropic' in config:
+        anthropic_key_setting = config.get('anthropic', {}).get('api_key')
+        resolved_anthropic_key = _resolve_api_key(anthropic_key_setting, 'ANTHROPIC_API_KEY')
+        
+        # Store the resolved key back into the config dict
+        if resolved_anthropic_key:
+            config['anthropic']['api_key'] = resolved_anthropic_key
+            logger.info("Anthropic API key resolved successfully.")
+        else:
+            logger.warning("Anthropic API key could not be resolved. Anthropic client will not be available.")
+    
     # Resolve the DeepSeek API key if it exists in config
     if 'deepseek' in config:
         deepseek_key_setting = config.get('deepseek', {}).get('api_key')
@@ -194,6 +219,7 @@ if __name__ == "__main__":
         # Test API key resolution specifically
         print("\nTesting API Key Resolution:")
         print(f"Resolved Gemini Key: {loaded_config.get('api', {}).get('resolved_key')}")
+        print(f"Resolved Anthropic Key: {loaded_config.get('anthropic', {}).get('api_key')}")
         print(f"Resolved DeepSeek Key: {loaded_config.get('deepseek', {}).get('resolved_key')}")
 
     except ConfigError as e:

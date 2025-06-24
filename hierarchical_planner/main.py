@@ -18,27 +18,33 @@ import sys
 from typing import Dict, Any, Optional
 
 # Local imports
-# Note: gemini_client functions now require config passed in
-# Moved call_gemini_with_retry to gemini_client
-from .gemini_client import generate_structured_content, generate_content, call_gemini_with_retry
+# Note: client functions now require config passed in
+# Import Gemini client
+from gemini_client import generate_structured_content as gemini_generate_structured_content
+from gemini_client import generate_content as gemini_generate_content
+from gemini_client import call_gemini_with_retry
+# Import Anthropic client
+from anthropic_client import generate_structured_content as anthropic_generate_structured_content
+from anthropic_client import generate_content as anthropic_generate_content
+from anthropic_client import call_anthropic_with_retry
 # TODO: Update qa_validator import/call signature when config is integrated there
-from .qa_validator import run_validation as run_qa_validation
-from .config_loader import load_config # ConfigError is now in exceptions
-from .logger_setup import setup_logging # Added
-from .checkpoint_manager import CheckpointManager # Import the checkpoint manager
+from qa_validator import run_validation as run_qa_validation
+from config_loader import load_config # ConfigError is now in exceptions
+from logger_setup import setup_logging # Added
+from checkpoint_manager import CheckpointManager # Import the checkpoint manager
 # Import custom exceptions
-from .exceptions import (
+from exceptions import (
     HierarchicalPlannerError, ConfigError, FileProcessingError,
     FileNotFoundError as PlannerFileNotFoundError, # Alias to avoid conflict
     FileReadError, FileWriteError, PlanGenerationError, PlanValidationError,
     JsonSerializationError, ApiCallError, JsonProcessingError, ProjectBuilderError # Added ProjectBuilderError
 )
-from .project_builder import ProjectBuilder # Import ProjectBuilder
+from project_builder import ProjectBuilder # Import ProjectBuilder
 
 # --- Load Configuration ---
 try:
-    # Assumes config.yaml is in ../config relative to this file's location (hierarchical_planner/)
-    CONFIG = load_config('../config/config.yaml')
+    # Assumes config.yaml is in config relative to this file's location (hierarchical_planner/)
+    CONFIG = load_config('config/config.yaml')
     # --- Setup Logging ---
     setup_logging(CONFIG) # Call the setup function HERE
     logger = logging.getLogger(__name__) # Get logger AFTER setup
@@ -125,12 +131,64 @@ Example:
 }}
 """
 
-# --- Helper Function (Moved to gemini_client.py) ---
-# async def call_gemini_with_retry(...): ... # Moved
+# --- Helper Functions ---
+async def select_llm_client(config: Dict[str, Any], provider: Optional[str] = None):
+    """
+    Selects the appropriate LLM client based on the configuration and optional provider preference.
+    
+    Args:
+        config: The application configuration dictionary.
+        provider: Optional provider preference ('gemini', 'anthropic', 'deepseek')
+        
+    Returns:
+        A tuple containing the appropriate client functions:
+        (generate_structured_content, generate_content, call_with_retry)
+    """
+    # If a specific provider is requested, try to use it
+    if provider:
+        if provider.lower() == 'anthropic':
+            if 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
+                logger.info("Using Anthropic client with Claude model (user specified).")
+                return (
+                    anthropic_generate_structured_content,
+                    anthropic_generate_content,
+                    call_anthropic_with_retry
+                )
+            else:
+                logger.warning("Anthropic provider requested but API key not configured. Falling back to auto-selection.")
+        elif provider.lower() == 'gemini':
+            if 'api' in config and config.get('api', {}).get('resolved_key'):
+                logger.info("Using Gemini client (user specified).")
+                return (
+                    gemini_generate_structured_content,
+                    gemini_generate_content,
+                    call_gemini_with_retry
+                )
+            else:
+                logger.warning("Gemini provider requested but API key not configured. Falling back to auto-selection.")
+        elif provider.lower() == 'deepseek':
+            logger.warning("DeepSeek provider requested but not yet implemented. Falling back to auto-selection.")
+    
+    # Auto-selection logic (original behavior)
+    # Check if Anthropic is configured
+    if 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
+        logger.info("Using Anthropic client with Claude model (auto-selected).")
+        return (
+            anthropic_generate_structured_content,
+            anthropic_generate_content,
+            call_anthropic_with_retry
+        )
+    # Default to Gemini
+    logger.info("Using Gemini client (auto-selected).")
+    return (
+        gemini_generate_structured_content,
+        gemini_generate_content,
+        call_gemini_with_retry
+    )
 
 # --- Main Logic ---
 
-async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any], resume: bool = True) -> tuple[dict | None, str | None]:
+async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any], resume: bool = True, provider: Optional[str] = None) -> tuple[dict | None, str | None]:
     """
     Generates the hierarchical plan (Phases, Tasks, Steps) using Gemini.
 
@@ -207,11 +265,14 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                         logger.info(f"Will resume by processing tasks for phase: {last_processed_phase}")
     
     try:
+        # Select the appropriate LLM client
+        _, _, call_with_retry = await select_llm_client(config, provider)
+        
         # 3. Generate Phases if we don't have them
         if not reasoning_tree:
             logger.info("Generating phases...")
             phase_context = {"goal": goal}
-            phase_response = await call_gemini_with_retry(PHASE_GENERATION_PROMPT, phase_context, config)
+            phase_response = await call_with_retry(PHASE_GENERATION_PROMPT, phase_context, config)
             phases = phase_response.get("phases", [])
             
             if not phases:
@@ -264,7 +325,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
             if not reasoning_tree[phase]:
                 logger.info(f"Generating tasks for Phase: {phase}")
                 task_context = {"goal": goal, "phase": phase}
-                task_response = await call_gemini_with_retry(TASK_GENERATION_PROMPT, task_context, config)
+                task_response = await call_with_retry(TASK_GENERATION_PROMPT, task_context, config)
                 tasks = task_response.get("tasks", [])
                 
                 if not tasks:
@@ -324,7 +385,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                 step_context = {"goal": goal, "phase": phase, "task": task}
                 
                 try:
-                    step_response = await call_gemini_with_retry(STEP_GENERATION_PROMPT, step_context, config)
+                    step_response = await call_with_retry(STEP_GENERATION_PROMPT, step_context, config)
                     steps = step_response.get("steps", [])
                     
                     if not steps:
@@ -396,7 +457,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
         raise PlanGenerationError(f"An unexpected error occurred during plan generation: {e}") from e
 
 
-async def main_workflow(task_file: str, output_file: str, validated_output_file: str, skip_qa: bool, config: Dict[str, Any], skip_resume: bool = False):
+async def main_workflow(task_file: str, output_file: str, validated_output_file: str, skip_qa: bool, config: Dict[str, Any], skip_resume: bool = False, provider: Optional[str] = None, validate_only: bool = False):
     """
     Orchestrates the full application workflow.
 
@@ -411,17 +472,34 @@ async def main_workflow(task_file: str, output_file: str, validated_output_file:
         skip_qa: Boolean flag to skip the QA validation step.
         config: The application configuration dictionary.
         skip_resume: Boolean flag to skip resuming from checkpoints.
+        validate_only: Boolean flag to run only the validation step.
     """
     reasoning_tree: dict | None = None
     goal: str | None = None
     try:
-        # Step 1: Generate the initial plan
-        reasoning_tree, goal = await generate_plan(
-            task_file=task_file, 
-            output_file=output_file, 
-            config=config,
-            resume=not skip_resume
-        )
+        if validate_only:
+            logger.info("--- Running in Validation-Only Mode ---")
+            try:
+                logger.info(f"Loading existing plan from: {output_file}")
+                with open(output_file, 'r', encoding='utf-8') as f:
+                    reasoning_tree = json.load(f)
+                
+                logger.info(f"Reading goal from: {task_file}")
+                with open(task_file, 'r', encoding='utf-8') as f:
+                    goal = f.read().strip()
+            except FileNotFoundError as e:
+                raise PlannerFileNotFoundError(f"Required file not found for validation: {e.filename}") from e
+            except json.JSONDecodeError as e:
+                raise JsonParsingError(f"Error parsing JSON from {output_file}: {e}") from e
+        else:
+            # Step 1: Generate the initial plan
+            reasoning_tree, goal = await generate_plan(
+                task_file=task_file, 
+                output_file=output_file, 
+                config=config,
+                resume=not skip_resume,
+                provider=provider
+            )
 
         # Step 2: Run QA Validation (if not skipped)
         if not skip_qa:
@@ -436,7 +514,8 @@ async def main_workflow(task_file: str, output_file: str, validated_output_file:
                 input_path=output_file, 
                 output_path=validated_output_file, 
                 config=config,
-                resume=not skip_resume
+                resume=not skip_resume,
+                provider=provider
             )
             logger.info("--- QA Validation Step Completed ---")
         else:
@@ -514,6 +593,17 @@ if __name__ == "__main__":
         default=CONFIG['files'].get('default_project_dir', 'generated_project'), # Get from config or default
         help="Directory where the project will be built (default: generated_project or from config)."
     )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        choices=['gemini', 'anthropic', 'deepseek'],
+        help="Choose which LLM provider to use (gemini, anthropic, deepseek). If not specified, auto-selects based on available API keys."
+    )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Run only the QA validation on an existing reasoning tree. Requires --output-file to be set."
+    )
 
     args = parser.parse_args()
 
@@ -542,7 +632,7 @@ if __name__ == "__main__":
             # Real execution requires integrating tool calls.
             builder = ProjectBuilder(
                 reasoning_tree_path=reasoning_tree_input,
-                config_path='../config/config.yaml', # Assuming config path relative to main.py location
+                config_path='config/config.yaml', # Assuming config path relative to main.py location
                 project_dir=project_dir_abs
             )
             builder.build() # This currently runs the simulation
@@ -566,7 +656,9 @@ if __name__ == "__main__":
                 validated_output_file=args.validated_output_file,
                 skip_qa=args.skip_qa,
                 config=CONFIG,
-                skip_resume=args.no_resume
+                skip_resume=args.no_resume,
+                provider=args.provider,
+                validate_only=args.validate_only
             ))
         except HierarchicalPlannerError as e:
             logger.critical(f"Application error during plan generation/validation: {e}", exc_info=True)

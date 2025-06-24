@@ -100,3 +100,16 @@ class PlanGenerationError(PlanError):
 class PlanValidationError(PlanError):
     """Raised when the generated plan fails structural or content validation."""
     pass
+
+# --- Project Builder Errors ---
+class ProjectBuilderError(HierarchicalPlannerError):
+    """Raised when there's an error during project building."""
+    pass
+
+class LLMClientError(HierarchicalPlannerError):
+    """Raised when there's an error with LLM client operations."""
+    pass
+
+class ValidationError(HierarchicalPlannerError):
+    """Raised when validation fails."""
+    pass

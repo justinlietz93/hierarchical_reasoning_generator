@@ -35,11 +35,11 @@ from checkpoint_manager import CheckpointManager # Import the checkpoint manager
 # Import custom exceptions
 from exceptions import (
     HierarchicalPlannerError, ConfigError, FileProcessingError,
-    FileNotFoundError as PlannerFileNotFoundError, # Alias to avoid conflict
+    FileNotFoundError as PlannerFileNotFoundError,
     FileReadError, FileWriteError, PlanGenerationError, PlanValidationError,
-    JsonSerializationError, ApiCallError, JsonProcessingError, ProjectBuilderError # Added ProjectBuilderError
+    JsonSerializationError, ApiCallError, JsonProcessingError, ProjectBuilderError
 )
-from project_builder import ProjectBuilder # Import ProjectBuilder
+from project_builder import ProjectBuilder
 
 # --- Load Configuration ---
 try:
@@ -65,8 +65,26 @@ except Exception as e:
 # --- Prompt Templates ---
 # These are crucial and will likely need refinement based on Gemini's responses.
 
+CONSTITUTION_GENERATION_PROMPT = """
+You are a Founding Architect agent. Your sole purpose is to analyze a high-level user goal and establish the immutable foundational rules for the project.
+Based on the user's goal, you must make definitive, high-level project decisions to prevent ambiguity and context drift later in the development process.
+
+User Goal: "{goal}"
+
+Generate a "Project Constitution" by determining the foundational rules.
+Your response MUST be a valid JSON object conforming to the following JSON Schema:
+
+{schema}
+"""
+
 PHASE_GENERATION_PROMPT = """
+Project Constitution:
+{constitution}
+
 Given the high-level user goal: "{goal}"
+And the established Project Constitution, break this goal down into the major, distinct phases required for completion.
+Each phase should represent a significant stage of the project.
+List the phases concisely.
 
 Break this goal down into the major, distinct phases required for completion.
 Each phase should represent a significant stage of the project.
@@ -85,10 +103,13 @@ Example:
 """
 
 TASK_GENERATION_PROMPT = """
+Project Constitution:
+{constitution}
+
 Given the high-level user goal: "{goal}"
 And the current phase: "{phase}"
 
-Break this phase down into specific, actionable tasks.
+Based on the constitution, break this phase down into specific, actionable tasks.
 Each task should be a concrete unit of work needed to complete the phase.
 List the tasks concisely.
 
@@ -107,11 +128,14 @@ STEP_GENERATION_PROMPT = """
 You are an expert planner assisting an autonomous AI coding agent.
 Your goal is to generate a sequence of detailed, step-by-step prompts that will guide the AI agent to complete a specific task.
 
+Project Constitution:
+{constitution}
+
 High-level user goal: "{goal}"
 Current phase: "{phase}"
 Current task: "{task}"
 
-Generate a sequence of prompts for the AI coding agent to execute this task.
+Adhering strictly to the Project Constitution, generate a sequence of prompts for the AI coding agent to execute this task.
 Each prompt should be:
 1.  **Actionable:** Clearly state what the AI agent needs to do.
 2.  **Specific:** Provide enough detail for the agent to understand the requirement.
@@ -132,63 +156,45 @@ Example:
 """
 
 # --- Helper Functions ---
-async def select_llm_client(config: Dict[str, Any], provider: Optional[str] = None):
-    """
-    Selects the appropriate LLM client based on the configuration and optional provider preference.
-    
-    Args:
-        config: The application configuration dictionary.
-        provider: Optional provider preference ('gemini', 'anthropic', 'deepseek')
-        
-    Returns:
-        A tuple containing the appropriate client functions:
-        (generate_structured_content, generate_content, call_with_retry)
-    """
-    # If a specific provider is requested, try to use it
-    if provider:
-        if provider.lower() == 'anthropic':
-            if 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
-                logger.info("Using Anthropic client with Claude model (user specified).")
-                return (
-                    anthropic_generate_structured_content,
-                    anthropic_generate_content,
-                    call_anthropic_with_retry
-                )
-            else:
-                logger.warning("Anthropic provider requested but API key not configured. Falling back to auto-selection.")
-        elif provider.lower() == 'gemini':
-            if 'api' in config and config.get('api', {}).get('resolved_key'):
-                logger.info("Using Gemini client (user specified).")
-                return (
-                    gemini_generate_structured_content,
-                    gemini_generate_content,
-                    call_gemini_with_retry
-                )
-            else:
-                logger.warning("Gemini provider requested but API key not configured. Falling back to auto-selection.")
-        elif provider.lower() == 'deepseek':
-            logger.warning("DeepSeek provider requested but not yet implemented. Falling back to auto-selection.")
-    
-    # Auto-selection logic (original behavior)
-    # Check if Anthropic is configured
-    if 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
-        logger.info("Using Anthropic client with Claude model (auto-selected).")
-        return (
-            anthropic_generate_structured_content,
-            anthropic_generate_content,
-            call_anthropic_with_retry
-        )
-    # Default to Gemini
-    logger.info("Using Gemini client (auto-selected).")
-    return (
-        gemini_generate_structured_content,
-        gemini_generate_content,
-        call_gemini_with_retry
-    )
+from llm_client_selector import select_llm_client
 
 # --- Main Logic ---
 
-async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any], resume: bool = True, provider: Optional[str] = None) -> tuple[dict | None, str | None]:
+async def generate_constitution(goal: str, config: Dict[str, Any], provider: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Generates the project constitution by reading the schema and calling the LLM.
+    """
+    logger.info("Generating Project Constitution...")
+    try:
+        # Load the constitution schema from the external file
+        schema_path = os.path.join(os.path.dirname(__file__), 'config', 'project_constitution_schema.json')
+        with open(schema_path, 'r', encoding='utf-8') as f:
+            schema = json.load(f)
+        
+        _, _, call_with_retry = await select_llm_client(config, provider)
+        constitution_context = {
+            "goal": goal,
+            "schema": json.dumps(schema, indent=2)
+        }
+        constitution_response = await call_with_retry(CONSTITUTION_GENERATION_PROMPT, constitution_context, config)
+        
+        # TODO: Add validation against the loaded schema here
+        
+        constitution_path = "project_constitution.json"
+        with open(constitution_path, 'w', encoding='utf-8') as f:
+            json.dump(constitution_response, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Project Constitution saved to {constitution_path}")
+        return constitution_response
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to load or parse project constitution schema: {e}", exc_info=True)
+        raise ConfigError("Could not load or parse project_constitution_schema.json.") from e
+    except (ApiCallError, JsonSerializationError, FileWriteError) as e:
+        logger.error(f"Failed to generate or save the Project Constitution: {e}", exc_info=True)
+        raise PlanGenerationError("Could not establish Project Constitution.") from e
+
+
+async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any], resume: bool = True, provider: Optional[str] = None, constitution: Dict[str, Any] = None) -> tuple[dict | None, str | None]:
     """
     Generates the hierarchical plan (Phases, Tasks, Steps) using Gemini.
 
@@ -265,13 +271,18 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                         logger.info(f"Will resume by processing tasks for phase: {last_processed_phase}")
     
     try:
+        if not constitution:
+            raise PlanGenerationError("Cannot generate plan without a Project Constitution.")
+            
+        constitution_str = json.dumps(constitution, indent=2)
+
         # Select the appropriate LLM client
         _, _, call_with_retry = await select_llm_client(config, provider)
         
         # 3. Generate Phases if we don't have them
         if not reasoning_tree:
             logger.info("Generating phases...")
-            phase_context = {"goal": goal}
+            phase_context = {"goal": goal, "constitution": constitution_str}
             phase_response = await call_with_retry(PHASE_GENERATION_PROMPT, phase_context, config)
             phases = phase_response.get("phases", [])
             
@@ -324,7 +335,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
             # Generate tasks for this phase if needed
             if not reasoning_tree[phase]:
                 logger.info(f"Generating tasks for Phase: {phase}")
-                task_context = {"goal": goal, "phase": phase}
+                task_context = {"goal": goal, "phase": phase, "constitution": constitution_str}
                 task_response = await call_with_retry(TASK_GENERATION_PROMPT, task_context, config)
                 tasks = task_response.get("tasks", [])
                 
@@ -382,7 +393,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                 
                 # Generate steps for this task
                 logger.info(f"  Generating steps for Task: {task}")
-                step_context = {"goal": goal, "phase": phase, "task": task}
+                step_context = {"goal": goal, "phase": phase, "task": task, "constitution": constitution_str}
                 
                 try:
                     step_response = await call_with_retry(STEP_GENERATION_PROMPT, step_context, config)
@@ -460,46 +471,63 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
 async def main_workflow(task_file: str, output_file: str, validated_output_file: str, skip_qa: bool, config: Dict[str, Any], skip_resume: bool = False, provider: Optional[str] = None, validate_only: bool = False):
     """
     Orchestrates the full application workflow.
-
-    Calls `generate_plan` to create the initial plan. If successful and QA is
-    not skipped, calls `run_validation` to perform QA analysis and annotation.
-    Handles and logs exceptions raised during the process.
-
-    Args:
-        task_file: Absolute path to the input task file.
-        output_file: Absolute path for the initial output plan JSON.
-        validated_output_file: Absolute path for the validated/annotated plan JSON.
-        skip_qa: Boolean flag to skip the QA validation step.
-        config: The application configuration dictionary.
-        skip_resume: Boolean flag to skip resuming from checkpoints.
-        validate_only: Boolean flag to run only the validation step.
     """
     reasoning_tree: dict | None = None
     goal: str | None = None
+    constitution: dict | None = None
+    
     try:
+        logger.info(f"Reading goal from: {task_file}")
+        with open(task_file, 'r', encoding='utf-8') as f:
+            goal = f.read().strip()
+        if not goal:
+            raise FileReadError(f"Task file '{task_file}' is empty.")
+    except FileNotFoundError as e:
+        raise PlannerFileNotFoundError(f"Task file not found: {e.filename}") from e
+
+    try:
+        # Determine providers for each agent
+        default_provider = config.get('default_provider', 'gemini')
+        architect_provider = provider or config.get('agents', {}).get('founding_architect', {}).get('provider', default_provider)
+        planner_provider = provider or config.get('agents', {}).get('planner', {}).get('provider', default_provider)
+        validator_provider = provider or config.get('agents', {}).get('qa_validator', {}).get('provider', default_provider)
+
+        # Step 0: Generate or Load Project Constitution
+        constitution_path = "project_constitution.json"
+        if not skip_resume and os.path.exists(constitution_path):
+            logger.info(f"Loading existing Project Constitution from {constitution_path}")
+            with open(constitution_path, 'r', encoding='utf-8') as f:
+                constitution = json.load(f)
+        else:
+            constitution = await generate_constitution(goal, config, architect_provider)
+
         if validate_only:
             logger.info("--- Running in Validation-Only Mode ---")
             try:
                 logger.info(f"Loading existing plan from: {output_file}")
                 with open(output_file, 'r', encoding='utf-8') as f:
                     reasoning_tree = json.load(f)
-                
-                logger.info(f"Reading goal from: {task_file}")
-                with open(task_file, 'r', encoding='utf-8') as f:
-                    goal = f.read().strip()
+                if not reasoning_tree:
+                    raise PlanValidationError("Reasoning tree is empty, cannot validate.")
             except FileNotFoundError as e:
                 raise PlannerFileNotFoundError(f"Required file not found for validation: {e.filename}") from e
             except json.JSONDecodeError as e:
                 raise JsonParsingError(f"Error parsing JSON from {output_file}: {e}") from e
         else:
             # Step 1: Generate the initial plan
-            reasoning_tree, goal = await generate_plan(
-                task_file=task_file, 
-                output_file=output_file, 
+            reasoning_tree, _ = await generate_plan(
+                task_file=task_file,
+                output_file=output_file,
                 config=config,
                 resume=not skip_resume,
-                provider=provider
+                provider=planner_provider,
+                constitution=constitution
             )
+
+        # Ensure we have a plan to validate
+        if not reasoning_tree:
+            logger.error("No reasoning tree available to validate. Halting.")
+            return
 
         # Step 2: Run QA Validation (if not skipped)
         if not skip_qa:
@@ -511,11 +539,12 @@ async def main_workflow(task_file: str, output_file: str, validated_output_file:
 
             # Pass config down to QA validation function, including resume flag
             await run_qa_validation(
-                input_path=output_file, 
-                output_path=validated_output_file, 
+                input_path=output_file,
+                output_path=validated_output_file,
                 config=config,
                 resume=not skip_resume,
-                provider=provider
+                provider=validator_provider,
+                constitution=constitution
             )
             logger.info("--- QA Validation Step Completed ---")
         else:

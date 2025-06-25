@@ -1,44 +1,61 @@
 # Configuration for Hierarchical Planner
 
+# Default provider to use if a specific agent provider is not set.
+# Options: "gemini", "anthropic", "deepseek"
+default_provider: gemini
+
+# Per-agent provider configuration. This allows using different LLMs for
+# different tasks (e.g., a powerful model for planning, a faster one for validation).
+agents:
+  founding_architect:
+    provider: gemini
+    # model_name: "gemini-1.5-pro-latest" # Optional: override the default model for this agent
+  planner:
+    provider: gemini
+    # model_name: "gemini-1.5-pro-latest"
+  qa_validator:
+    provider: gemini
+    # model_name: "gemini-1.5-flash-latest"
+
+# --- API Key and Model Settings ---
+
+# Gemini configuration
 api:
   # API Key: Can be the key itself, an environment variable name (e.g., GEMINI_API_KEY),
   # or null/empty to rely solely on the environment variable.
   key: GEMINI_API_KEY
-  model_name: gemini-2.5-pro # User requested model
-  temperature: 0.5
+  model_name: gemini-1.5-pro-latest # Default model for Gemini
+  temperature: 0.6
   max_output_tokens: 8192
-  retries: 3 # Number of retries for API calls
+  retries: 3
 
 # Anthropic configuration
 anthropic:
   # API Key for Anthropic API
   api_key: ANTHROPIC_API_KEY
-  model_name: claude-3-7-sonnet-20250219
+  model_name: claude-3-opus-20240229 # Default model for Anthropic
   temperature: 0.7
   max_tokens: 8192
   retries: 3
-  # Extended thinking configuration
-  extended_thinking: true
-  thinking_min_tokens: 1024
-  thinking_max_tokens: 8192
-  # Optional system prompt
-  system_prompt: "You are a helpful AI assistant that breaks down complex tasks into structured steps."
 
 # DeepSeek fallback configuration
 deepseek:
   # API Key for DeepSeek API
   api_key: DEEPSEEK_API_KEY
   base_url: https://api.deepseek.com/v1
-  model_name: DeepSeek-V3-0324
+  model_name: deepseek-coder
   temperature: 0.6
   max_tokens: 8192
   top_p: 1.0
+
+# --- File and Logging Settings ---
 
 files:
   # Default file paths relative to the hierarchical_planner directory
   default_task: task.txt
   default_output: reasoning_tree.json
   default_validated_output: reasoning_tree_validated.json
+  default_project_dir: generated_project
 
 logging:
   # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL

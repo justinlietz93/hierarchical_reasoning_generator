@@ -15,17 +15,12 @@ from typing import Dict, Any, Optional, List, Tuple
 
 # Local imports
 from checkpoint_manager import CheckpointManager # Import the checkpoint manager
-# Import client functions directly to avoid circular import
-from gemini_client import generate_structured_content as gemini_generate_structured_content
-from gemini_client import generate_content as gemini_generate_content
-from gemini_client import call_gemini_with_retry
-from anthropic_client import generate_structured_content as anthropic_generate_structured_content
-from anthropic_client import generate_content as anthropic_generate_content
-from anthropic_client import call_anthropic_with_retry
+from llm_client_selector import select_llm_client
 
 from exceptions import (
     FileProcessingError, PlannerFileNotFoundError, FileReadError, FileWriteError,
-    JsonSerializationError, JsonProcessingError, PlanValidationError, ApiCallError
+    JsonSerializationError, JsonProcessingError, JsonParsingError, PlanValidationError, ApiCallError,
+    ConfigError
 )
 
 
@@ -38,6 +33,11 @@ logger = logging.getLogger(__name__)
 
 ALIGNMENT_CHECK_PROMPT = """
 You are a meticulous project plan reviewer.
+Your review must be consistent with the established Project Constitution.
+
+Project Constitution:
+{constitution}
+
 Analyze the following step(s) within the context of the overall goal, phase, and task.
 
 Overall Goal: "{goal}"
@@ -62,6 +62,11 @@ Example:
 
 RESOURCE_IDENTIFICATION_PROMPT = """
 You are an assistant analyzing prompts intended for an AI coding agent.
+Your analysis must be consistent with the established Project Constitution.
+
+Project Constitution:
+{constitution}
+
 Analyze the following prompt in the context of the overall goal, phase, and task.
 
 Overall Goal: "{goal}"
@@ -150,8 +155,9 @@ def validate_plan_structure(plan_data: dict) -> list[str]:
 
     return errors
 
-async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str, Any], 
-                                   resume: bool = True, 
+async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str, Any],
+                                   constitution: Dict[str, Any],
+                                   resume: bool = True,
                                    input_path: str = None,
                                    output_path: str = None,
                                    provider: Optional[str] = None) -> dict:
@@ -280,41 +286,19 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                 if "qa_info" not in step_obj:
                     step_obj["qa_info"] = {}
 
-                # Select the appropriate LLM client based on provider preference
-                if provider and provider.lower() == 'gemini':
-                    if 'api' in config and config.get('api', {}).get('resolved_key'):
-                        logger.debug("Using Gemini client for QA validation (user specified).")
-                        call_with_retry = call_gemini_with_retry
-                    else:
-                        logger.warning("Gemini provider requested but API key not configured. Falling back to auto-selection.")
-                        call_with_retry = call_anthropic_with_retry if 'anthropic' in config and config.get('anthropic', {}).get('api_key') else call_gemini_with_retry
-                elif provider and provider.lower() == 'anthropic':
-                    if 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
-                        logger.debug("Using Anthropic client for QA validation (user specified).")
-                        call_with_retry = call_anthropic_with_retry
-                    else:
-                        logger.warning("Anthropic provider requested but API key not configured. Falling back to auto-selection.")
-                        call_with_retry = call_gemini_with_retry if 'api' in config and config.get('api', {}).get('resolved_key') else call_anthropic_with_retry
-                else:
-                    # Auto-selection logic (prioritize Gemini if available)
-                    if 'api' in config and config.get('api', {}).get('resolved_key'):
-                        logger.debug("Using Gemini client for QA validation (auto-selected).")
-                        call_with_retry = call_gemini_with_retry
-                    elif 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
-                        logger.debug("Using Anthropic client for QA validation (auto-selected).")
-                        call_with_retry = call_anthropic_with_retry
-                    else:
-                        logger.debug("Defaulting to Gemini client for QA validation.")
-                        call_with_retry = call_gemini_with_retry
+                # Select the appropriate LLM client
+                _, _, call_with_retry = await select_llm_client(config, provider)
                 
                 # 1. Resource/Action Identification (skip if already done)
                 if "resource_analysis" not in step_obj["qa_info"] and "resource_analysis_error" not in step_obj["qa_info"]:
                     try:
+                        constitution_str = json.dumps(constitution, indent=2)
                         resource_context = {
                             "goal": goal,
                             "phase": phase_name,
                             "task": task_name,
-                            "prompt_text": step_prompt
+                            "prompt_text": step_prompt,
+                            "constitution": constitution_str
                         }
                         # Pass config to retry function
                         resource_analysis = await call_with_retry(
@@ -345,11 +329,13 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                 # 2. Alignment/Clarity Check (Individual Step) (skip if already done)
                 if "step_critique" not in step_obj["qa_info"] and "step_critique_error" not in step_obj["qa_info"]:
                     try:
+                        constitution_str = json.dumps(constitution, indent=2)
                         alignment_context = {
                             "goal": goal,
                             "phase": phase_name,
                             "task": task_name,
-                            "steps_json": json.dumps({prompt_key: step_prompt}, indent=2) # Analyze one step
+                            "steps_json": json.dumps({prompt_key: step_prompt}, indent=2), # Analyze one step
+                            "constitution": constitution_str
                         }
                          # Pass config to retry function
                         alignment_critique = await call_with_retry(
@@ -392,7 +378,7 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
 
 # --- Main Execution ---
 
-async def run_validation(input_path: str, output_path: str, config: Dict[str, Any], resume: bool = True, provider: Optional[str] = None):
+async def run_validation(input_path: str, output_path: str, config: Dict[str, Any], resume: bool = True, provider: Optional[str] = None, constitution: Optional[Dict[str, Any]] = None):
     """
     Orchestrates the QA validation workflow.
 
@@ -480,11 +466,21 @@ async def run_validation(input_path: str, output_path: str, config: Dict[str, An
     # 4. Analyze and Annotate
     logger.info("Starting plan analysis and annotation (this may take time)...")
     try:
+        if not constitution:
+            constitution_path = "project_constitution.json"
+            logger.info(f"Constitution not provided, loading from {constitution_path}")
+            try:
+                with open(constitution_path, 'r', encoding='utf-8') as f:
+                    constitution = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                raise PlanValidationError(f"Could not load a valid project constitution from {constitution_path} for validation.") from e
+
         # Pass config down and include paths for checkpointing
         annotated_plan = await analyze_and_annotate_plan(
-            plan_data, 
-            goal, 
+            plan_data,
+            goal,
             config,
+            constitution,
             resume=resume,
             input_path=input_path,
             output_path=output_path,

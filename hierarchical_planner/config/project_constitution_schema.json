@@ -1,0 +1,71 @@
+{
+  "type": "object",
+  "properties": {
+    "projectName": {
+      "type": "string",
+      "description": "The canonical, kebab-case name for the project."
+    },
+    "primaryLanguage": {
+      "type": "string"
+    },
+    "platform": {
+      "type": "string"
+    },
+    "architecturalPattern": {
+      "type": "string"
+    },
+    "testingFramework": {
+      "type": "string"
+    },
+    "codeStyle": {
+      "type": "string"
+    },
+    "namingConventions": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "string"
+        },
+        "classes": {
+          "type": "string"
+        },
+        "interfaces": {
+          "type": "string"
+        }
+      },
+      "required": ["files", "classes", "interfaces"]
+    },
+    "directoryStructure": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "modules": { "type": "string" },
+        "types": { "type": "string" },
+        "tests": { "type": "string" },
+        "config": { "type": "string" }
+      },
+      "required": ["source", "modules", "types", "tests", "config"]
+    },
+    "errorHandlingStrategy": {
+      "type": "string"
+    },
+    "coreDependencies": {
+      "type": "object",
+      "patternProperties": {
+        "^.+$": { "type": "string" }
+      }
+    }
+  },
+  "required": [
+    "projectName",
+    "primaryLanguage",
+    "platform",
+    "architecturalPattern",
+    "testingFramework",
+    "codeStyle",
+    "namingConventions",
+    "directoryStructure",
+    "errorHandlingStrategy",
+    "coreDependencies"
+  ]
+}

@@ -24,16 +24,22 @@ logger = logging.getLogger(__name__)
 
 #: Default configuration values.
 DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
+    'default_provider': 'gemini',
+    'agents': {
+        'founding_architect': {'provider': 'gemini'},
+        'planner': {'provider': 'gemini'},
+        'qa_validator': {'provider': 'gemini'}
+    },
     'api': {
         'key': 'GEMINI_API_KEY', # Default to checking this env var
-        'model_name': 'gemini-2.5-pro-exp-03-25',
-        'temperature': 0.7,
+        'model_name': 'gemini-2.5-pro',
+        'temperature': 0.6,
         'max_output_tokens': 8192,
         'retries': 3
     },
     'anthropic': {
         'api_key': 'ANTHROPIC_API_KEY', # Default to checking this env var
-        'model_name': 'claude-3-7-sonnet-20250219',
+        'model_name': 'claude-sonnet-4',
         'temperature': 0.7,
         'max_tokens': 8192,
         'retries': 3,
@@ -44,7 +50,7 @@ DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
     'deepseek': {
         'api_key': 'DEEPSEEK_API_KEY', # Default to checking this env var
         'base_url': 'https://api.deepseek.com/v1',
-        'model_name': 'DeepSeek-V3-0324',
+        'model_name': 'DeepSeek-V3.1',
         'temperature': 0.6,
         'max_tokens': 8192,
         'top_p': 1.0
@@ -157,19 +163,11 @@ def load_config(config_path: str = 'config/config.yaml') -> Dict[str, Any]:
     # Resolve the Gemini API key
     api_key_setting = config.get('api', {}).get('key')
     resolved_api_key = _resolve_api_key(api_key_setting, 'GEMINI_API_KEY')
-
-    if not resolved_api_key:
-        # If still no key, raise a specific ApiKeyError
-        raise ApiKeyError(
-            "GEMINI_API_KEY could not be resolved. "
-            "Ensure it's set in the environment (e.g., via .env file), "
-            "directly in config.yaml, or referenced by name via the 'api.key' setting."
-        )
-
-    # Store the resolved key back into the config dict for easy access
-    config['api']['resolved_key'] = resolved_api_key
-    # Avoid logging the key itself unless debugging
-    logger.info("Gemini API key resolved successfully.")
+    if resolved_api_key:
+        config['api']['resolved_key'] = resolved_api_key
+        logger.info("Gemini API key resolved successfully.")
+    else:
+        logger.warning("Gemini API key could not be resolved. Gemini provider will not be available.")
 
     # Resolve the Anthropic API key if it exists in config
     if 'anthropic' in config:

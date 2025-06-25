@@ -14,10 +14,10 @@ import os
 from typing import Dict, Any, Optional, List, Tuple
 
 # Local imports
-from checkpoint_manager import CheckpointManager # Import the checkpoint manager
-from llm_client_selector import select_llm_client
+from .checkpoint_manager import CheckpointManager # Import the checkpoint manager
+from .llm_client_selector import select_llm_client
 
-from exceptions import (
+from .exceptions import (
     FileProcessingError, PlannerFileNotFoundError, FileReadError, FileWriteError,
     JsonSerializationError, JsonProcessingError, JsonParsingError, PlanValidationError, ApiCallError,
     ConfigError
@@ -155,6 +155,77 @@ def validate_plan_structure(plan_data: dict) -> list[str]:
 
     return errors
 
+async def validate_steps(steps: List[Dict[str, Any]], goal: str, phase: str, task: str, config: Dict[str, Any], constitution: Dict[str, Any], provider: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Validates a list of steps for a given task.
+    """
+    logger.info(f"      Validating {len(steps)} steps for Task: {task}")
+    _, _, call_with_retry = await select_llm_client(config, provider)
+    constitution_str = json.dumps(constitution, indent=2)
+
+    for step_obj in steps:
+        step_keys = list(step_obj.keys())
+        prompt_key = next((k for k in step_keys if k != 'qa_info'), None)
+        if not prompt_key:
+            continue
+        step_prompt = step_obj.get(prompt_key, "")
+        if not step_prompt:
+            continue
+
+        if "qa_info" not in step_obj:
+            step_obj["qa_info"] = {}
+
+        # Resource Identification
+        if "resource_analysis" not in step_obj["qa_info"]:
+            try:
+                resource_context = {
+                    "goal": goal, "phase": phase, "task": task,
+                    "prompt_text": step_prompt, "constitution": constitution_str
+                }
+                resource_analysis = await call_with_retry(
+                    RESOURCE_IDENTIFICATION_PROMPT, resource_context, config, is_structured=True
+                )
+                step_obj["qa_info"]["resource_analysis"] = resource_analysis
+            except Exception as e:
+                logger.error(f"Error during resource analysis for step {prompt_key}: {e}", exc_info=True)
+                step_obj["qa_info"]["resource_analysis_error"] = str(e)
+
+        # Alignment/Clarity Check
+        if "step_critique" not in step_obj["qa_info"]:
+            try:
+                alignment_context = {
+                    "goal": goal, "phase": phase, "task": task,
+                    "steps_json": json.dumps({prompt_key: step_prompt}, indent=2),
+                    "constitution": constitution_str
+                }
+                alignment_critique = await call_with_retry(
+                    ALIGNMENT_CHECK_PROMPT, alignment_context, config, is_structured=True
+                )
+                step_obj["qa_info"]["step_critique"] = alignment_critique
+            except Exception as e:
+                logger.error(f"Error during step critique for step {prompt_key}: {e}", exc_info=True)
+                step_obj["qa_info"]["step_critique_error"] = str(e)
+    
+    return steps
+
+async def validate_tasks(tasks: List[str], goal: str, phase: str, config: Dict[str, Any], constitution: Dict[str, Any], provider: Optional[str] = None) -> List[str]:
+    """
+    Validates a list of tasks for a given phase.
+    """
+    logger.info(f"    Validating {len(tasks)} tasks for Phase: {phase}")
+    # This is a placeholder for now.
+    # In a real implementation, you might have a prompt to check if the tasks are logical for the phase.
+    return tasks
+
+async def validate_phases(phases: List[str], goal: str, config: Dict[str, Any], constitution: Dict[str, Any], provider: Optional[str] = None) -> List[str]:
+    """
+    Validates a list of phases for a given goal.
+    """
+    logger.info(f"  Validating {len(phases)} phases for Goal: {goal}")
+    # This is a placeholder for now.
+    # In a real implementation, you might have a prompt to check if the phases are logical for the goal.
+    return phases
+
 async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str, Any],
                                    constitution: Dict[str, Any],
                                    resume: bool = True,
@@ -162,30 +233,12 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                                    output_path: str = None,
                                    provider: Optional[str] = None) -> dict:
     """
-    Uses Gemini to analyze alignment, identify resources, and annotate the plan.
+    Uses an LLM to analyze alignment, identify resources, and annotate the plan.
 
-    Iterates through each step in the plan, calling the Gemini API via
-    `call_gemini_with_retry` for resource identification and step critique.
+    Iterates through each step in the plan, calling the validation logic.
     Adds the results (or error messages) under a 'qa_info' key within each step object.
     
     Supports checkpoint and resume functionality if enabled.
-
-    Args:
-        plan_data: The structurally validated plan data (Python dictionary).
-        goal: The overall goal string, providing context for analysis.
-        config: The application configuration dictionary.
-        resume: Whether to attempt to resume from a checkpoint if available.
-        input_path: Path to the input plan file (needed for checkpointing).
-        output_path: Path to the output plan file (needed for checkpointing).
-
-    Returns:
-        The plan data dictionary, modified in-place with 'qa_info' annotations.
-
-    Raises:
-        ApiCallError: If a Gemini API call fails definitively after retries
-                      (propagated from `call_gemini_with_retry`). Errors during
-                      individual step analysis are logged and recorded in the
-                      annotation, but do not stop the overall process by default.
     """
     annotated_plan = plan_data # Modify in place
     

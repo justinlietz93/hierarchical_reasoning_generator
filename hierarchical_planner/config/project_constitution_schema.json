@@ -1,71 +1,81 @@
 {
+  "title": "Project Constitution Schema",
   "type": "object",
   "properties": {
-    "projectName": {
+    "project_name": {
       "type": "string",
-      "description": "The canonical, kebab-case name for the project."
+      "description": "The official name of the project."
     },
-    "primaryLanguage": {
-      "type": "string"
+    "core_mission": {
+      "type": "string",
+      "description": "A single, concise sentence defining the primary purpose and goal of the project."
     },
-    "platform": {
-      "type": "string"
+    "architectural_paradigm": {
+      "type": "string",
+      "description": "The fundamental architectural pattern to be used (e.g., 'Microservices', 'Monolithic', 'Serverless', 'Event-Driven')."
     },
-    "architecturalPattern": {
-      "type": "string"
-    },
-    "testingFramework": {
-      "type": "string"
-    },
-    "codeStyle": {
-      "type": "string"
-    },
-    "namingConventions": {
+    "primary_language_and_tech_stack": {
       "type": "object",
+      "description": "The non-negotiable core technologies.",
       "properties": {
-        "files": {
-          "type": "string"
-        },
-        "classes": {
-          "type": "string"
-        },
-        "interfaces": {
-          "type": "string"
+        "language": { "type": "string" },
+        "backend_framework": { "type": "string" },
+        "frontend_framework": { "type": "string" },
+        "database": { "type": "string" }
+      },
+      "required": ["language"]
+    },
+    "key_data_structures": {
+      "type": "array",
+      "description": "An evolving list of the most critical, globally-used data structures or entities. This is where new, validated entities would be added.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" }
         }
-      },
-      "required": ["files", "classes", "interfaces"]
+      }
     },
-    "directoryStructure": {
+    "global_dependencies_and_interfaces": {
+      "type": "array",
+      "description": "An evolving list of essential external libraries, APIs, or services that the project depends on. This prevents re-declaration.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "non_functional_requirements": {
+      "type": "array",
+      "description": "A list of critical, project-wide constraints.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "requirement": { "type": "string", "description": "e.g., 'Security', 'Performance', 'Scalability'" },
+          "constraint": { "type": "string", "description": "e.g., 'Must use JWT for authentication', 'API response time < 200ms'" }
+        }
+      }
+    },
+    "project_file_map": {
       "type": "object",
-      "properties": {
-        "source": { "type": "string" },
-        "modules": { "type": "string" },
-        "types": { "type": "string" },
-        "tests": { "type": "string" },
-        "config": { "type": "string" }
-      },
-      "required": ["source", "modules", "types", "tests", "config"]
-    },
-    "errorHandlingStrategy": {
-      "type": "string"
-    },
-    "coreDependencies": {
-      "type": "object",
-      "patternProperties": {
-        "^.+$": { "type": "string" }
+      "description": "A virtual map of the project's file and directory structure. This is updated by the validator after each file operation.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["directory", "file"] },
+          "description": { "type": "string", "description": "A brief description of the file or directory's purpose." },
+          "children": { "$ref": "#/properties/project_file_map" }
+        }
       }
     }
   },
   "required": [
-    "projectName",
-    "primaryLanguage",
-    "platform",
-    "architecturalPattern",
-    "testingFramework",
-    "codeStyle",
-    "namingConventions",
-    "directoryStructure",
-    "errorHandlingStrategy",
-    "coreDependencies"
+    "project_name",
+    "core_mission",
+    "architectural_paradigm",
+    "primary_language_and_tech_stack"
   ]
 }

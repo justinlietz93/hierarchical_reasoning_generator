@@ -4,8 +4,8 @@ import yaml
 from unittest.mock import patch, mock_open
 
 # Module to test
-from hierarchical_planner import config_loader
-from hierarchical_planner.exceptions import ConfigError, ConfigNotFoundError, ConfigParsingError, ApiKeyError
+from .. import config_loader
+from ..exceptions import ConfigError, ConfigNotFoundError, ConfigParsingError, ApiKeyError
 
 # --- Test Fixtures ---
 

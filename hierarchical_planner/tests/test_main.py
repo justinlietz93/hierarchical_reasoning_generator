@@ -6,9 +6,9 @@ import asyncio
 import os # Import os for basename mocking
 
 # Import the module under test *without* module-level patches
-from hierarchical_planner import main
+from .. import main
 # Import exceptions needed for tests
-from hierarchical_planner.exceptions import ApiCallError, HierarchicalPlannerError, PlanGenerationError, PlanValidationError
+from ..exceptions import ApiCallError, HierarchicalPlannerError, PlanGenerationError, PlanValidationError
 
 # --- Test Fixtures ---
 

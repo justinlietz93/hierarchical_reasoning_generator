@@ -11,7 +11,7 @@ import logging
 from typing import Dict, Any, Optional
 
 # Local imports for exceptions
-from exceptions import ConfigError, ConfigNotFoundError, ConfigParsingError, ApiKeyError
+from .exceptions import ConfigError, ConfigNotFoundError, ConfigParsingError, ApiKeyError
 
 # Load .env file if present (for API key primarily)
 # Load from the same directory as this script
@@ -71,40 +71,40 @@ DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
 
 def _resolve_api_key(key_setting: Optional[str], default_env_var: str) -> Optional[str]:
     """
-    Resolves an API key based on the config setting.
+    Resolves an API key based on the config setting, prioritizing environment variables.
 
     Resolution logic:
-    1. If key_setting is None or empty, check the default_env_var.
-    2. If key_setting looks like a direct key (heuristic: >20 chars, no spaces),
-       check if an env var with that name exists (prefer env var), otherwise use the setting directly.
-    3. Assume key_setting is an env var name and check it.
-    4. As a final fallback, check default_env_var again.
+    1. If key_setting is provided, it is treated as the name of an environment variable.
+    2. If the environment variable from key_setting is not found, it falls back to the default_env_var.
+    3. Direct embedding of API keys in config files is discouraged and will raise a warning.
 
     Args:
-        key_setting: The value of the api key from the configuration.
+        key_setting: The value from the configuration, expected to be an environment variable name.
         default_env_var: The default environment variable name to check.
 
     Returns:
         The resolved API key string, or None if resolution fails.
     """
-    if not key_setting:
-        # If key setting is null or empty, rely solely on direct env var check
-        return os.getenv(default_env_var)
-
-    # Check if the setting itself is the key (basic check: contains no spaces and is long enough)
-    # This is a heuristic and might need refinement. Assume keys don't look like typical env var names.
-    if ' ' not in key_setting and len(key_setting) > 20: # Arbitrary length check
-         # Check if it's *also* an env var name, prefer env var if it exists
+    # Heuristic to detect if a key is hardcoded in the config
+    if key_setting and ' ' not in key_setting and len(key_setting) > 20:
+        logger.warning(
+            f"Security Warning: An API key appears to be hardcoded in the configuration file for setting '{key_setting[:4]}...'. "
+            "It is strongly recommended to use environment variables instead (e.g., set {default_env_var})."
+        )
+        # Even if it looks like a key, check if it's an env var name first
         env_value = os.getenv(key_setting)
         if env_value:
             return env_value
-        # Otherwise, assume the setting *is* the key
+        # As a fallback for legacy behavior, we will use the hardcoded key, but this is not recommended.
         return key_setting
 
-    # Assume the setting is an environment variable name
-    api_key = os.getenv(key_setting)
-    if not api_key:
-        # As a fallback, also check the default env var
+    # Primary path: treat key_setting as an environment variable name
+    env_var_name = key_setting if key_setting else default_env_var
+    
+    api_key = os.getenv(env_var_name)
+    
+    if not api_key and key_setting:
+        # If the custom env var is not found, try the default as a fallback
         api_key = os.getenv(default_env_var)
 
     return api_key

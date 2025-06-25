@@ -6,8 +6,8 @@ import google.generativeai as genai
 from google.generativeai.types import generation_types
 
 # Module to test
-from hierarchical_planner import gemini_client
-from hierarchical_planner.exceptions import ApiKeyError, ApiCallError, ApiResponseError, ApiBlockedError, JsonParsingError, JsonProcessingError
+from .. import gemini_client
+from ..exceptions import ApiKeyError, ApiCallError, ApiResponseError, ApiBlockedError, JsonParsingError, JsonProcessingError
 
 # --- Test Fixtures ---
 

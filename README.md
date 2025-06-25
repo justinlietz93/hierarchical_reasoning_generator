@@ -1,55 +1,56 @@
-# Hierarchical Planner with Gemini AI
+# Hierarchical Reasoning Generator
 
-A Python application that breaks down high-level goals into structured, actionable steps using Google's Gemini AI model. This tool creates a hierarchical planning structure (Phases -> Tasks -> Steps) suitable for guiding autonomous agents or project planning. It includes configuration management, logging, error handling, an optional QA validation step, and unit tests.
+A sophisticated Python application that automates software project planning and generation by breaking down high-level goals into structured, actionable steps using Large Language Models (LLMs). The system can then use the generated plan to build a complete project structure, including source code, documentation, and tests.
 
 ## Features
 
-- Utilizes Google's Gemini models (configurable, e.g., `gemini-2.5-pro-exp-03-25`) for intelligent task breakdown.
-- Generates a comprehensive hierarchical planning structure (Phases, Tasks, Steps).
-- Outputs results as structured JSON files (`reasoning_tree.json`).
-- **Optional QA Validation**: Analyzes the generated plan for structural integrity, goal alignment, clarity, and resource identification using Gemini, outputting an annotated plan (`reasoning_tree_validated.json`).
-- **Configuration**: Manages API keys, model parameters, file paths, and logging settings via `hierarchical_planner/config/config.yaml`.
-- **Logging**: Implements configurable logging to console and/or file (`hierarchical_planner/logs/planner.log`).
-- **Error Handling**: Includes custom exceptions and retry mechanisms for API calls and file operations.
-- **Unit Tests**: Provides `pytest` unit tests for core components.
+-   **Multi-Provider LLM Support**: Utilizes various LLM providers (Google Gemini, Anthropic, Deepseek) for intelligent task breakdown, execution, and validation.
+-   **Hierarchical Planning**: Generates a comprehensive planning structure (Phases → Tasks → Steps) stored in `reasoning_tree.json`.
+-   **Project Constitution**: Establishes foundational rules for a project in a `project_constitution.json` file to ensure consistency and prevent context drift.
+-   **QA Validation (Optional)**: Analyzes the generated plan for structural integrity, goal alignment, and clarity, outputting an annotated plan.
+-   **Project Builder**: An execution engine that interprets the reasoning tree, using a dual-LLM system (an "executor" and a "validator") to write code, create files, and run tests in a self-correcting loop.
+-   **Persona Builder**: A utility to generate and manage AI personas from unstructured text, creating structured profiles to guide LLM behavior.
+-   **Configuration Management**: Manages API keys, model parameters, file paths, and logging settings via `hierarchical_planner/config/config.yaml` and `.env` files.
+-   **Checkpointing & Resumption**: Automatically saves progress during plan generation and can resume from the last checkpoint if interrupted.
+-   **Logging**: Implements configurable logging to console and/or file.
+-   **Error Handling**: Includes custom exceptions and retry mechanisms for API calls and file operations.
+-   **Unit Tests**: Provides `pytest` unit tests for core components.
 
 ## Project Structure
 
 ```
-gemini/
-├── .env                  # (Optional/Recommended) For storing GEMINI_API_KEY
+hierarchical_reasoning_generator/
 ├── .gitignore
 ├── README.md
+├── PROJECT_REVIEW.md
 └── hierarchical_planner/
     ├── config/
-    │   ├── config.yaml   # Main configuration file
-    │   └── .gitkeep
-    ├── logs/             # Log files (ignored by git)
-    │   └── .gitkeep
-    ├── tests/            # Unit tests
+    │   ├── config.yaml
+    │   ├── llm_config.json
+    │   └── project_constitution_schema.json
+    ├── persona_builder/
+    │   ├── personas/
+    │   ├── cli.py
+    │   ├── parser.py
+    │   └── ...
+    ├── tests/
     │   ├── test_config_loader.py
-    │   ├── test_gemini_client.py
-    │   ├── test_main.py
-    │   ├── test_qa_validator.py
-    │   └── .gitkeep
-    ├── config_loader.py  # Loads configuration
-    ├── exceptions.py     # Custom exception classes
-    ├── gemini_client.py  # Handles Gemini API interaction
-    ├── logger_setup.py   # Configures logging
-    ├── main.py           # Main script execution and workflow orchestration
-    ├── qa_validator.py   # QA validation and annotation logic
-    ├── requirements-dev.txt # Dependencies for testing/development
-    ├── requirements.txt  # Core application dependencies
-    └── task.txt          # Input file for the high-level goal
+    │   └── ...
+    ├── .env                # Recommended for API keys
+    ├── main.py             # Main script for planning and building
+    ├── project_builder.py  # Core project generation logic
+    ├── qa_validator.py     # QA validation logic
+    ├── universal_LLM_client.py # Client for multiple LLM providers
+    ├── requirements.txt
+    └── task.txt            # Input file for the high-level goal
 ```
 
 ## Installation
 
 1.  **Clone the repository:**
     ```bash
-    # Replace with the actual repository URL if applicable
     git clone https://github.com/justinlietz93/hierarchical_reasoning_generator.git
-    cd gemini
+    cd hierarchical_reasoning_generator
     ```
 
 2.  **Create and activate a virtual environment:**
@@ -63,112 +64,68 @@ gemini/
 
 3.  **Install dependencies:**
     ```bash
-    # Install core dependencies
     pip install -r hierarchical_planner/requirements.txt
-    # Install development/testing dependencies (optional, for running tests)
+    # For development/testing:
     pip install -r hierarchical_planner/requirements-dev.txt
     ```
 
-4.  **Configure the application:**
-    *   **API Key:** The recommended way is to create a `.env` file in the project root (`gemini/`) and add your key:
+4.  **Configure API Keys:**
+    *   Create a `.env` file in the `hierarchical_planner/` directory.
+    *   Add your API keys to the `.env` file. The application will automatically load them. Example:
         ```dotenv
-        GEMINI_API_KEY=YOUR_API_KEY_HERE
+        GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+        ANTHROPIC_API_KEY="YOUR_ANTHROPIC_API_KEY"
+        DEEPSEEK_API_KEY="YOUR_DEEPSEEK_API_KEY"
         ```
-        Alternatively, you can modify `hierarchical_planner/config/config.yaml` to include the key directly or specify a different environment variable name (see comments in `config.yaml`).
-    *   **Other Settings:** Review and modify `hierarchical_planner/config/config.yaml` to adjust the Gemini model, API parameters, default file paths, or logging settings as needed.
+
+5.  **Review Configuration:**
+    *   Modify `hierarchical_planner/config/config.yaml` and `hierarchical_planner/config/llm_config.json` to adjust models, API parameters, file paths, or logging settings as needed.
 
 ## Usage
 
-1.  **Define Goal:** Edit `hierarchical_planner/task.txt` with your high-level goal (e.g., "build me an IDE").
+### 1. Define Goal
+Edit `hierarchical_planner/task.txt` with your high-level goal (e.g., "build me an IDE").
 
-2.  **Run the Planner:** Navigate to the `hierarchical_planner` directory and run `main.py`.
-    ```bash
-    cd hierarchical_planner
-    python main.py [OPTIONS]
-    ```
-
-3.  **Options:**
-    *   `--task-file PATH`: Specify a different input task file. (Default: `task.txt`)
-    *   `--output-file PATH`: Specify a different output file for the initial plan. (Default: `reasoning_tree.json`)
-    *   `--validated-output-file PATH`: Specify a different output file for the QA-validated plan. (Default: `reasoning_tree_validated.json`)
-    *   `--skip-qa`: Skip the QA validation and annotation step.
-
-4.  **Examine Output:**
-    *   `reasoning_tree.json`: Contains the initial plan generated by Gemini.
-    *   `reasoning_tree_validated.json`: (If QA is not skipped) Contains the plan annotated with QA analysis (`qa_info` added to each step).
-    *   Logs: Check the console output and/or `hierarchical_planner/logs/planner.log` (if file logging is enabled) for progress and errors.
-
-## Running Tests
-
-Ensure development dependencies are installed (`pip install -r hierarchical_planner/requirements-dev.txt`). Run tests from the project root directory (`gemini/`):
+### 2. Run the Planner
+Navigate to the `hierarchical_planner` directory and run `main.py`.
 
 ```bash
-pytest
+cd hierarchical_planner
+python main.py [OPTIONS]
 ```
 
-## Output Structure
+**Common Workflows:**
 
-The generated JSON files (`reasoning_tree.json` and `reasoning_tree_validated.json`) follow this structure:
+*   **Generate a Plan:**
+    ```bash
+    python main.py
+    ```
+    This generates `project_constitution.json` and `reasoning_tree.json`.
 
-```json
-{
-  "Phase Name 1": {
-    "Task Name 1.1": [
-      {
-        "step 1": "Detailed prompt for AI agent for step 1...",
-        "qa_info": { // Added by QA validation step
-          "resource_analysis": {
-            "external_actions": [],
-            "key_entities_dependencies": ["..."],
-            "technology_hints": ["..."]
-          },
-          "step_critique": {
-            "alignment_critique": "...",
-            "sequence_critique": "...",
-            "clarity_critique": "..."
-          }
-        }
-      },
-      {"step 2": "Detailed prompt for AI agent for step 2..."}
-      // ... more steps
-    ],
-    // ... more tasks
-  },
-  // ... more phases
-}
-```
-*Note: `qa_info` is only present in `reasoning_tree_validated.json`.*
+*   **Generate and Validate a Plan:**
+    ```bash
+    python main.py
+    ```
+    (By default, QA is enabled). This produces `reasoning_tree_validated.json`. To skip: `python main.py --skip-qa`.
 
-## Requirements
+*   **Build a Project from a Plan:**
+    ```bash
+    python main.py --build
+    ```
+    This will use the generated `reasoning_tree.json` (or the validated one if it exists) to build the project in the `generated_project` directory.
 
-- Python 3.8+
-- Google Gemini API key
-- Required Python packages (see `hierarchical_planner/requirements.txt` and `hierarchical_planner/requirements-dev.txt`)
+### Command-Line Options
+
+*   `--task-file PATH`: Specify a different input task file.
+*   `--output-file PATH`: Specify a different output file for the plan.
+*   `--validated-output-file PATH`: Specify a different output file for the QA-validated plan.
+*   `--skip-qa`: Skip the QA validation step.
+*   `--no-resume`: Start a new plan from scratch, ignoring any existing checkpoints.
+*   `--build`: Run the Project Builder to generate the project from the reasoning tree.
+*   `--project-dir PATH`: Specify the directory for the generated project.
+*   `--provider [gemini|anthropic|deepseek]`: Force the use of a specific LLM provider.
+*   `--validate-only`: Run only the QA validation on an existing plan.
 
 ## License
 
-MIT License (Content from original README preserved below)
-
-Copyright (c) 2025
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-## Acknowledgments
-
-- This project uses Google's Generative AI (Gemini) for content generation.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

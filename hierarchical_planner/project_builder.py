@@ -8,13 +8,13 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from config_loader import load_config
-# from gemini_client import GeminiClient  # Not used in current implementation
+from .config_loader import load_config
+# from .gemini_client import GeminiClient  # Not used in current implementation
 # Assuming DeepSeekV3Client exists or is handled by UniversalLLMClient
-# from deepseek_v3_client import DeepSeekV3Client  # Not used in current implementation
-from universal_LLM_client import UniversalLLMClient
-from exceptions import ProjectBuilderError, LLMClientError, ValidationError
-from logger_setup import setup_logging
+# from .deepseek_v3_client import DeepSeekV3Client  # Not used in current implementation
+from .universal_LLM_client import UniversalLLMClient
+from .exceptions import ProjectBuilderError, LLMClientError, ValidationError
+from .logger_setup import setup_logging
 
 # Configure logging will be done when config is available
 logger = logging.getLogger(__name__)

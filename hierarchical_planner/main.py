@@ -20,26 +20,27 @@ from typing import Dict, Any, Optional
 # Local imports
 # Note: client functions now require config passed in
 # Import Gemini client
-from gemini_client import generate_structured_content as gemini_generate_structured_content
-from gemini_client import generate_content as gemini_generate_content
-from gemini_client import call_gemini_with_retry
+from .gemini_client import generate_structured_content as gemini_generate_structured_content
+from .gemini_client import generate_content as gemini_generate_content
+from .gemini_client import call_gemini_with_retry
 # Import Anthropic client
-from anthropic_client import generate_structured_content as anthropic_generate_structured_content
-from anthropic_client import generate_content as anthropic_generate_content
-from anthropic_client import call_anthropic_with_retry
+from .anthropic_client import generate_structured_content as anthropic_generate_structured_content
+from .anthropic_client import generate_content as anthropic_generate_content
+from .anthropic_client import call_anthropic_with_retry
 # TODO: Update qa_validator import/call signature when config is integrated there
-from qa_validator import run_validation as run_qa_validation
-from config_loader import load_config # ConfigError is now in exceptions
-from logger_setup import setup_logging # Added
-from checkpoint_manager import CheckpointManager # Import the checkpoint manager
+from .qa_validator import run_validation as run_qa_validation, validate_steps, validate_phases, validate_tasks
+from .config_loader import load_config # ConfigError is now in exceptions
+from .logger_setup import setup_logging # Added
+from .checkpoint_manager import CheckpointManager # Import the checkpoint manager
 # Import custom exceptions
-from exceptions import (
+from .exceptions import (
     HierarchicalPlannerError, ConfigError, FileProcessingError,
     FileNotFoundError as PlannerFileNotFoundError,
     FileReadError, FileWriteError, PlanGenerationError, PlanValidationError,
     JsonSerializationError, ApiCallError, JsonProcessingError, ProjectBuilderError
 )
-from project_builder import ProjectBuilder
+from .project_builder import ProjectBuilder
+from .prompts.prompt_manager import PromptManager
 
 # --- Load Configuration ---
 try:
@@ -49,6 +50,9 @@ try:
     setup_logging(CONFIG) # Call the setup function HERE
     logger = logging.getLogger(__name__) # Get logger AFTER setup
     logger.info("Configuration loaded and logging configured successfully.")
+    # --- Load Prompts ---
+    prompt_manager = PromptManager(os.path.join(os.path.dirname(__file__), 'prompts'))
+    logger.info("Prompts loaded successfully.")
 except ConfigError as e:
     # Catch specific ConfigError from loader
     print(f"CRITICAL: Configuration error: {e}", file=sys.stderr)
@@ -61,102 +65,14 @@ except Exception as e:
 
 # --- Configuration (Now loaded from CONFIG) ---
 # Constants are no longer needed here
+CONSTITUTION_GENERATION_PROMPT = prompt_manager.get_prompt("CONSTITUTION_GENERATION_PROMPT")
+PHASE_GENERATION_PROMPT = prompt_manager.get_prompt("PHASE_GENERATION_PROMPT")
+TASK_GENERATION_PROMPT = prompt_manager.get_prompt("TASK_GENERATION_PROMPT")
+STEP_GENERATION_PROMPT = prompt_manager.get_prompt("STEP_GENERATION_PROMPT")
 
-# --- Prompt Templates ---
-# These are crucial and will likely need refinement based on Gemini's responses.
-
-CONSTITUTION_GENERATION_PROMPT = """
-You are a Founding Architect agent. Your sole purpose is to analyze a high-level user goal and establish the immutable foundational rules for the project.
-Based on the user's goal, you must make definitive, high-level project decisions to prevent ambiguity and context drift later in the development process.
-
-User Goal: "{goal}"
-
-Generate a "Project Constitution" by determining the foundational rules.
-Your response MUST be a valid JSON object conforming to the following JSON Schema:
-
-{schema}
-"""
-
-PHASE_GENERATION_PROMPT = """
-Project Constitution:
-{constitution}
-
-Given the high-level user goal: "{goal}"
-And the established Project Constitution, break this goal down into the major, distinct phases required for completion.
-Each phase should represent a significant stage of the project.
-List the phases concisely.
-
-Break this goal down into the major, distinct phases required for completion.
-Each phase should represent a significant stage of the project.
-List the phases concisely.
-
-Return the response as a JSON object with a single key "phases" containing a list of strings, where each string is a phase name/description.
-Example:
-{{
-  "phases": [
-    "Phase 1: Planning and Design",
-    "Phase 2: Core Feature Implementation",
-    "Phase 3: Testing and Refinement",
-    "Phase 4: Deployment"
-  ]
-}}
-"""
-
-TASK_GENERATION_PROMPT = """
-Project Constitution:
-{constitution}
-
-Given the high-level user goal: "{goal}"
-And the current phase: "{phase}"
-
-Based on the constitution, break this phase down into specific, actionable tasks.
-Each task should be a concrete unit of work needed to complete the phase.
-List the tasks concisely.
-
-Return the response as a JSON object with a single key "tasks" containing a list of strings, where each string is a task name/description.
-Example:
-{{
-  "tasks": [
-    "Task 1.1: Define data models",
-    "Task 1.2: Design UI mockups",
-    "Task 1.3: Set up project structure"
-  ]
-}}
-"""
-
-STEP_GENERATION_PROMPT = """
-You are an expert planner assisting an autonomous AI coding agent.
-Your goal is to generate a sequence of detailed, step-by-step prompts that will guide the AI agent to complete a specific task.
-
-Project Constitution:
-{constitution}
-
-High-level user goal: "{goal}"
-Current phase: "{phase}"
-Current task: "{task}"
-
-Adhering strictly to the Project Constitution, generate a sequence of prompts for the AI coding agent to execute this task.
-Each prompt should be:
-1.  **Actionable:** Clearly state what the AI agent needs to do.
-2.  **Specific:** Provide enough detail for the agent to understand the requirement.
-3.  **Contextual:** Assume the agent has access to the project state from previous steps.
-4.  **Include Hints:** Where necessary, suggest tools, libraries, techniques, or external actions (e.g., "Search the web for...", "Install library X", "Write unit tests for Y", "Refactor Z for clarity").
-5.  **Sequential:** The prompts should follow a logical order of execution.
-
-Return the response as a JSON object with a single key "steps" containing a list of dictionaries. Each dictionary must have exactly one key-value pair, where the key is the step identifier (e.g., "step 1", "step 2") and the value is the detailed prompt string for the AI agent.
-Example:
-{{
-  "steps": [
-    {{"step 1": "Create a new Python file named 'parser.py'."}},
-    {{"step 2": "Define a function 'parse_input(data: str) -> dict' in 'parser.py'."}},
-    {{"step 3": "Implement basic error handling for invalid input formats within the 'parse_input' function."}},
-    {{"step 4": "Write three unit tests for the 'parse_input' function using the 'unittest' library, covering valid input, invalid input, and edge cases."}}
-  ]
-}}
-"""
 
 # --- Helper Functions ---
-from llm_client_selector import select_llm_client
+from .llm_client_selector import select_llm_client
 
 # --- Main Logic ---
 
@@ -180,6 +96,9 @@ async def generate_constitution(goal: str, config: Dict[str, Any], provider: Opt
         
         # TODO: Add validation against the loaded schema here
         
+        if "project_file_map" not in constitution_response:
+            constitution_response["project_file_map"] = {}
+
         constitution_path = "project_constitution.json"
         with open(constitution_path, 'w', encoding='utf-8') as f:
             json.dump(constitution_response, f, indent=2, ensure_ascii=False)
@@ -285,6 +204,9 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
             phase_context = {"goal": goal, "constitution": constitution_str}
             phase_response = await call_with_retry(PHASE_GENERATION_PROMPT, phase_context, config)
             phases = phase_response.get("phases", [])
+
+            if phases:
+                phases = await validate_phases(phases, goal, config, constitution, provider)
             
             if not phases:
                 logger.error("Could not generate phases from Gemini response.")
@@ -338,6 +260,9 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                 task_context = {"goal": goal, "phase": phase, "constitution": constitution_str}
                 task_response = await call_with_retry(TASK_GENERATION_PROMPT, task_context, config)
                 tasks = task_response.get("tasks", [])
+
+                if tasks:
+                    tasks = await validate_tasks(tasks, goal, phase, config, constitution, provider)
                 
                 if not tasks:
                     logger.warning(f"No tasks generated for phase '{phase}'. Continuing to next phase.")
@@ -398,6 +323,9 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                 try:
                     step_response = await call_with_retry(STEP_GENERATION_PROMPT, step_context, config)
                     steps = step_response.get("steps", [])
+
+                    if steps:
+                        steps = await validate_steps(steps, goal, phase, task, config, constitution, provider)
                     
                     if not steps:
                         logger.warning(f"No steps generated for task '{task}' in phase '{phase}'. Continuing to next task.")
@@ -529,26 +457,10 @@ async def main_workflow(task_file: str, output_file: str, validated_output_file:
             logger.error("No reasoning tree available to validate. Halting.")
             return
 
-        # Step 2: Run QA Validation (if not skipped)
-        if not skip_qa:
-            logger.info("--- Starting QA Validation Step ---")
-            if not goal:
-                 # This case should ideally be caught by generate_plan raising an error
-                 logger.error("Goal is missing, cannot run QA validation.")
-                 raise PlanValidationError("Goal is missing, cannot run QA validation.")
-
-            # Pass config down to QA validation function, including resume flag
-            await run_qa_validation(
-                input_path=output_file,
-                output_path=validated_output_file,
-                config=config,
-                resume=not skip_resume,
-                provider=validator_provider,
-                constitution=constitution
-            )
-            logger.info("--- QA Validation Step Completed ---")
-        else:
-            logger.info("--- Skipping QA Validation Step ---")
+        # The QA validation is now interleaved within the generate_plan function.
+        # The --skip-qa flag can be used to disable it there.
+        if skip_qa:
+            logger.info("--- Interleaved QA Validation was skipped by user flag ---")
 
         logger.info("Workflow finished successfully.")
 

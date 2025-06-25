@@ -24,14 +24,14 @@ if str(project_root) not in sys.path:
 
 # Use absolute imports assuming the package is installed/accessible
 try:
-    from hierarchical_planner.persona_builder.parser import PersonaParser
-    from hierarchical_planner.persona_builder.xml_generator import XmlGenerator
-    from hierarchical_planner.persona_builder.chunker import PersonaChunker
-    from hierarchical_planner.persona_builder.markdown_generator import MarkdownGenerator # Import new generator
-    from hierarchical_planner.persona_builder.output_saver import OutputSaver # Import saver
-    from hierarchical_planner.config_loader import load_config
+    from .parser import PersonaParser
+    from .xml_generator import XmlGenerator
+    from .chunker import PersonaChunker
+    from .markdown_generator import MarkdownGenerator # Import new generator
+    from .output_saver import OutputSaver # Import saver
+    from ..config_loader import load_config
     # Import the LLM selector
-    from hierarchical_planner.persona_builder.llm_selector import select_llm_client
+    from .llm_selector import select_llm_client
 except ImportError as e:
     print(f"Import Error in cli.py: {e}. Ensure hierarchical_planner package and PyYAML are installed or in PYTHONPATH.")
     sys.exit(1)

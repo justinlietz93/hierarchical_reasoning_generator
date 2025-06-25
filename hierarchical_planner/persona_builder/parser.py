@@ -23,12 +23,12 @@ if str(project_root) not in sys.path:
 # Use absolute imports assuming the package is installed/accessible
 try:
     # Import the exceptions
-    from hierarchical_planner.exceptions import HierarchicalPlannerError, ApiCallError, JsonParsingError, ApiResponseError
+    from ..exceptions import HierarchicalPlannerError, ApiCallError, JsonParsingError, ApiResponseError
     # Import the LLM selector
-    from hierarchical_planner.persona_builder.llm_selector import select_llm_client
+    from .llm_selector import select_llm_client
     # Import the LLM clients for initialization
-    from hierarchical_planner import gemini_client
-    from hierarchical_planner import anthropic_client
+    from .. import gemini_client
+    from .. import anthropic_client
 except ImportError as e:
     print(f"Import Error in parser.py: {e}. Ensure hierarchical_planner package is installed or in PYTHONPATH.")
     # Define dummy classes/exceptions if imports fail completely

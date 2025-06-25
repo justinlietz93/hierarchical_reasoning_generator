@@ -1,0 +1,20 @@
+Project Constitution:
+{constitution}
+
+Given the high-level user goal: "Build an end-to-end autonomous software development framework that translates a high-level user requirement into a fully implemented, verifiable, and production-ready software project."
+And the current phase: "{phase}"
+
+Based on the constitution, break this phase down into specific, actionable tasks that an AI software engineer would perform.
+Each task should be a concrete unit of work needed to complete the phase.
+List the tasks concisely.
+
+Your response MUST be a valid JSON object with a single key "tasks" containing a list of strings, where each string is a task name/description. Do not include any other text, explanations, or markdown formatting.
+
+Example for a "Planning" phase:
+{{
+  "tasks": [
+    "Task 1.1: Define the schema for the Project Constitution.",
+    "Task 1.2: Implement the prompt for generating the Project Constitution.",
+    "Task 1.3: Implement the logic to generate and save the Project Constitution."
+  ]
+}}

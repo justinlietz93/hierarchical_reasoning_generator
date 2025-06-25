@@ -11,7 +11,7 @@ import asyncio
 from typing import Dict, Any, Optional
 
 # Local imports for exceptions
-from exceptions import ApiKeyError, ApiCallError, ApiResponseError, JsonParsingError, JsonProcessingError
+from .exceptions import ApiKeyError, ApiCallError, ApiResponseError, JsonParsingError, JsonProcessingError
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)

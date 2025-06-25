@@ -1,99 +1,1455 @@
-1.0 System Overview & Core Philosophy
-This document outlines the architecture for a complete, end-to-end autonomous software development framework. The system's primary objective is to translate a high-level, natural language user requirement into a fully implemented, verifiable, and production-ready software project.
+# Architecture Document: Ironclad Code Generation System
 
-The core philosophy is a direct rejection of naive, single-shot code generation. Instead, the framework operates as a multi-stage, "factory assembly line," where an ambiguous initial concept is progressively refined into a deterministic and verifiable set of components. This approach is designed to manage the inherent non-determinism and cognitive limitations of Large Language Models (LLMs) by enforcing strict process controls, contracts, and verification at every stage.
+## 1. Introduction and Goals
 
-The system is built on five foundational principles:
+The Ironclad Code Generation System is designed to automate and standardize the process of generating software module implementations based on formal architectural specifications and interface contracts. At its core, the system acts as a sophisticated build tool that leverages the capabilities of Large Language Models (LLMs) for code generation, while ensuring the output adheres strictly to predefined structural, contractual, and validation rules.
 
-Hierarchical Decomposition: A complex problem is broken down top-down into a tree of manageable parts (Goal -> Phases -> Tasks -> Steps), creating a structured plan before any implementation is considered.
+The product idea addresses a critical need in modern software development: maintaining consistency, correctness, and security across numerous microservices or modules, particularly when dealing with complex domain logic and inter-module dependencies. Manually writing boilerplate code, implementing intricate interfaces, and ensuring adherence to coding standards and validation rules is time-consuming, error-prone, and difficult to scale across large teams or projects.
 
-Contract-First Design: A formal, machine-readable "contract" is generated for each software module. This contract defines the module's public interface, dependencies, and internal logic requirements, serving as an immutable blueprint.
+The target audience for the Ironclad system includes software architects, development teams, and CI/CD engineers working on projects that require a high degree of architectural discipline, code quality consistency, and accelerated module development.
 
-Parallel, Isolated Execution: Independent modules defined by the contract are built simultaneously by specialized AI agents, each working in isolation with only the knowledge of its own contract. This maximizes speed and prevents contextual errors from cascading.
+The primary problem solved is the translation of formal module specifications and interface contracts into high-quality, validated, and test-covered code implementations in a deterministic and automatable manner. This reduces manual effort, minimizes human error in implementing contracts and rules, and ensures that generated code components are inherently aligned with the system's architecture from inception.
 
-Test-Driven Correction: Code generation is not considered complete until it passes an objective, automated verification step. Generated code is paired with a test suite, executed in a sandbox, and if tests fail, a specialized "corrector" agent uses the formal test report to debug and fix the code.
+The key objectives this architecture aims to achieve are:
 
-Schema-Enforced Communication: All communication from AI agents back to the orchestrator (e.g., plans, code) is strictly governed by JSON schemas, ensuring reliability and eliminating parsing errors.
+*   **Determinism:** Given a specific set of inputs (ARCHITECTURE_SPEC, contracts, context, validation rules, prompt templates, and a specific version/state of the IMG LLM), the system should produce the same output code and failure reports.
+*   **Correctness and Adherence:** Ensure that generated code precisely implements the defined module contracts (interfaces) and adheres to all specified validation rules (DSL checks, type safety, linter rules).
+*   **Efficiency:** Enable parallel generation of independent modules to reduce overall build time.
+*   **Resilience:** Implement retry mechanisms for transient LLM generation failures and isolate module generation tasks to prevent single-module issues from halting the entire process.
+*   **Auditability and Integrity:** Provide mechanisms (like BlueprintLock) to verify the integrity of the generated system blueprint and maintain a clear record of generation failures.
+*   **Extensibility:** Design the system such that adding new validation rules, prompt templates, or supporting different output languages is feasible.
+*   **Maintainability:** Structure the system's components logically with clear responsibilities and interfaces to facilitate understanding, modification, and debugging.
 
-2.0 System Architecture and Workflow
-The framework is architected as a sequential pipeline of four primary stages, each with a distinct purpose and set of agents.
+By achieving these goals, the Ironclad system serves as a robust blueprint-to-code pipeline, significantly enhancing developer productivity, code quality, and architectural compliance.
 
-Stage 0: Hierarchical Planning (The Strategic Planner)
-This stage is based on the robust logic of your "Hierarchical Planner" project. Its goal is to transform a vague user goal into a detailed, procedural plan.
+## 2. High-Level Architecture Overview
 
-Input: A high-level user goal (e.g., "Build a real-time chat application with a React frontend").
+The Ironclad Code Generation System operates primarily as a pipeline orchestrated by distinct processes interacting with a shared file-based repository. It is not a continuously running service but rather an on-demand tool executed within a build environment (developer machine or CI/CD pipeline).
 
-Process: The orchestrator uses a series of prompts to guide a "Planner" LLM through a top-down decomposition:
+The architecture consists of two main phases, executed sequentially:
+1.  **Blueprint Initialization Phase:** Executed by the **Ironclad Blueprint Architect (IBA)**.
+2.  **Code Generation and Validation Phase:** Exechestraed by the **Task Runner**, which spawns **Job** processes that interact with the **Ironclad Module Generator (IMG)** and **Validation Engines**.
 
-Goal to Phases: The initial goal is broken down into major project phases (e.g., "Phase 1: Project Setup and Backend API," "Phase 2: Frontend UI and WebSocket Integration").
+Here's a textual description of the main components and their interactions:
 
-Phase to Tasks: Each phase is then broken down into a list of concrete tasks (e.g., "Task 1.1: Define API Endpoints," "Task 1.2: Set up Database Schema").
+```mermaid
+graph TD
+    A[ARCHITECTURE_SPEC] --> B(Ironclad Blueprint Architect - IBA);
+    B --> C(Repository Skeleton);
+    C --> D(contracts/*.json);
+    C --> E(idl/*.ts);
+    C --> F(system_context.json);
+    C --> G(validation_dsl_spec.md);
+    C --> H(prompt_templates/*.tmpl);
+    C --> I(src/modules/I*.ts - Interface Stubs);
+    C --> J(Repository - Initialized State);
 
-Task to Steps: Each task is further decomposed into a sequence of detailed, actionable steps that a developer would follow (e.g., for "Define API Endpoints": "Step 1: Define a POST /login endpoint...", "Step 2: Define a GET /messages endpoint...").
+    J --> K(Task Runner);
+    K -- Discovers modules --> D;
+    K -- Manages concurrency --> L(Concurrency Limit IRONCLAD_MAX_PARALLEL);
+    K -- Creates isolated workspaces --> M(Task Workspaces .tmp/ironclad_tasks/);
+    M -- Workspace Prep --> D, E, F, G, I;
+    M -- Construct Prompt --> N(Prompt File prompt.txt);
+    N --> O(Job - Spawned Process);
+    O -- Calls --> P(Ironclad Module Generator - IMG LLM);
+    P -- Returns JSON {code, test} --> O;
+    O -- Executes Validation --> Q(Validation Engines: tsc, DSL, Test Runner, Edge Case Check);
+    Q -- Reports failures --> R(failures.json / final_failure.json - in workspace);
+    O -- Writes generated code (if successful) --> S(Generated Code/Tests - in workspace);
 
-Key Features: This stage utilizes the checkpointing and multi-client support from your existing planner for resilience and flexibility.
+    K -- Awaits Job Completion --> O;
+    K -- Aggregates Results --> R, S;
+    K -- Merges successful outputs --> T(Repository - Final State with src/*.ts);
+    K -- Collates failures --> U(.ironclad_failures.json - top-level);
+    K -- Executes Global Validation --> V(Global Validation: Full tsc, Global DSL, Integration Tests);
+    V -- Reports success/failure --> W(Exit Code);
 
-Output: A detailed procedural plan (the reasoning_tree.json artifact), which provides the rich, detailed context needed for the next stage.
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#ccf,stroke:#333,stroke-width:2px
+    style K fill:#ccf,stroke:#333,stroke-width:2px
+    style O fill:#ccf,stroke:#333,stroke-width:2px
+    style P fill:#ff9,stroke:#333,stroke-width:2px
+    style Q fill:#9cf,stroke:#333,stroke-width:2px
+    style T fill:#cfc,stroke:#333,stroke-width:2px
+```
 
-Stage 1: Contract Generation (The Interface Architect)
-This stage translates the procedural plan from Stage 0 into a formal, declarative architecture.
+**Component Descriptions:**
 
-Input: The reasoning_tree.json procedural plan.
+*   **ARCHITECTURE_SPEC:** The primary input file defining the overall system structure, including module names, potentially high-level descriptions, and references to contracts.
+*   **Ironclad Blueprint Architect (IBA):** A command-line tool that reads the ARCHITECTURE_SPEC and associated files (contracts, IDLs, etc.), performs initial validations (like DAG integrity), and sets up the initial repository structure with all necessary non-implementation files and interface stubs. It ensures the foundational elements are correct before code generation begins. It embeds integrity checks (BlueprintLock) in emitted files.
+*   **Repository:** The central file-based storage where all architectural definitions (contracts, IDLs), context files, templates, generated code, and reports reside. It transitions from an "Initialized State" (post-IBA) to a "Final State" (post-Task Runner with merged code).
+*   **Task Runner:** The orchestrator of the code generation phase. It runs as a main process, reads the initialized repository, identifies modules to generate, prepares isolated environments for each module, manages the spawning and monitoring of Job processes, and performs final aggregation and global validation.
+*   **Job:** A short-lived, isolated process spawned by the Task Runner for a single module. It works within its dedicated workspace, interacts with the IMG, runs the validation sequence on the generated code, handles retries, and reports its final status.
+*   **Ironclad Module Generator (IMG):** An external Large Language Model (LLM) or an API wrapper around one. Its sole function is to take a structured prompt as input and return a JSON object containing the generated implementation code and test code for a single module. The architecture views this as a black box service invoked over an API.
+*   **Task Workspaces:** Isolated directories created by the Task Runner, containing only the necessary files for a single module's generation task (its contract, dependencies' contracts/interfaces, IDLs, context files, prompt template). This isolation is crucial for preventing cross-task interference and ensuring deterministic generation per module.
+*   **Validation Engines:** A set of tools and scripts (TypeScript compiler `tsc`, custom DSL validators, test runner like Jest/Mocha) invoked by the Job process to verify the correctness and adherence of the generated code.
+*   **Generated Code/Tests:** The `*.ts` and `*.test.ts` files produced by the IMG and validated by the Job. Successfully validated files are eventually merged into the main repository.
+*   **Failure Reports:** JSON files (`failures.json`, `final_failure.json`) detailing validation errors or generation issues within a Job's workspace. These are collated by the Task Runner into a top-level `.ironclad_failures.json`.
+*   **Global Validation:** Final checks performed by the Task Runner on the complete, merged codebase (e.g., full project type-check, integration tests).
 
-Process:
+**Technology Stack Choices and Justifications:**
 
-An Interface Architect agent analyzes the entire reasoning tree. It identifies logical groupings of functionality described in the tasks and steps to define a set of independent software modules.
+*   **Primary Language (Task Runner, IBA, Validation Logic):** TypeScript/Node.js.
+    *   *Justification:* Provides type safety for building robust tooling, leverages the vast npm ecosystem (file system operations, process management, JSON parsing, hashing, templating), excellent for CLI tools, and aligns well with generating TypeScript code. Node.js's asynchronous nature is suitable for managing concurrent Jobs.
+*   **Repository Management:** Git and File System.
+    *   *Justification:* Standard, widely adopted tools for source control and project structure. The system's state is inherently file-based (specifications, contracts, generated code). Leveraging Git simplifies versioning, collaboration, and integration into existing CI/CD workflows.
+*   **Configuration/Specification Format:** JSON, Markdown, Plain Text files (for templates).
+    *   *Justification:* JSON is standard, machine-readable, and ideal for structured data like contracts and failure reports. Markdown is suitable for human-readable specs (ARCHITECTURE_SPEC, validation DSL spec). Plain text templates are standard for prompt generation.
+*   **Code Generation Model:** Large Language Model (IMG).
+    *   *Justification:* LLMs are powerful for translating natural language instructions and structured data (from prompts) into code. This is the core innovation allowing automated code generation. Specific LLM choice is abstracted behind the IMG interface.
+*   **Validation Tools:**
+    *   `tsc` (TypeScript Compiler): Essential for static type checking, ensuring the generated code conforms to the defined interfaces (`I<ModuleName>.ts`).
+    *   Jest/Mocha (Test Runner): Standard JavaScript/TypeScript test frameworks for executing generated unit tests (`*.test.ts`).
+    *   Custom Scripts/Libraries: For DSL rule validation, edge case string checks, JSON schema validation. Implementations will depend on the specific DSL format chosen.
+    *   Linters (e.g., ESLint, Prettier): Can be integrated into validation steps to enforce coding style and detect common errors.
+    *   Security Linters (e.g., SonarQube scanner, Semgrep): Can be added for basic static analysis security checks on generated code.
+*   **Process Management:** Node.js `child_process` module or similar.
+    *   *Justification:* Native capabilities in Node.js for spawning independent processes (`fork` or `spawn`) are required to implement the Job isolation and concurrency model.
+*   **Hashing:** Standard cryptographic library (e.g., Node.js `crypto`).
+    *   *Justification:* Required for generating SHA-256 hashes for the BlueprintLock integrity check and prompt hash verification.
 
-For each identified module, it populates a strict JSON object conforming to the ModuleContract schema. This involves:
+This architecture emphasizes using standard tools and file-based workflows to keep the system itself relatively simple, robust, and integrable, while abstracting the complex, non-deterministic part (LLM generation) behind a well-defined interface and surrounding it with deterministic validation and retry logic.
 
-Defining the module's name and purpose.
+## 3. Detailed Component Design
 
-Formalizing the functionSignatures, dataStructures, and publicAPI.
+This section details the design and responsibilities of the primary components within the Ironclad system.
 
-Crucially, determining the dependencies and constructorParams by analyzing the interactions described in the reasoning tree.
+### 3.1. Ironclad Blueprint Architect (IBA)
 
-Translating the detailed procedural steps from the reasoning tree into the promptInstructions and acceptanceTests fields of the contract.
+*   **Responsibilities:**
+    *   Read the master `ARCHITECTURE_SPEC` file.
+    *   Parse and validate all individual module contract files (`contracts/*.json`).
+    *   Construct and validate the module dependency graph (from `contracts/*.json`) to ensure it is a Directed Acyclic Graph (DAG). Reject input if cycles are detected.
+    *   Parse and validate the `system_context.json` and `validation_dsl_spec.md` files.
+    *   Validate prompt template files (`prompt_templates/*.tmpl`).
+    *   Scaffold the initial repository directory structure (e.g., `contracts/`, `idl/`, `src/modules/`, `prompt_templates/`, `.tmp/`, etc.).
+    *   Generate Interface Definition Language (IDL) files (`idl/*.ts`) based on specifications (not explicitly detailed in spec but a logical precursor to `I*.ts`). *Self-correction: The spec only mentions `idl/` directory and `src/modules/I*.ts` stubs. I'll focus on generating the `I*.ts` stubs based on contracts, assuming the contract JSON implicitly or explicitly defines the interface surface.*
+    *   Copy validated contract, context, DSL spec, and template files to their canonical locations in the repository.
+    *   Generate module interface stub files (`src/modules/I<ModuleName>.ts`) based on the module contracts.
+    *   Embed a `BlueprintLock: sha256:<hash>` header in *every* file it writes or copies into the repository (contracts, IDLs, interface stubs, context, DSL spec, templates). This hash is calculated over the file's content *after* adding the header line itself (a standard practice requiring careful handling of the header calculation).
+    *   Ensure the initial state of `src/modules/` contains only the generated interface stubs (`I*.ts`) and no implementation files (`*.ts`).
+*   **APIs (Internal Contracts):**
+    *   `validateContracts(contractFiles: string[]): Map<string, ModuleContract>`: Reads and validates JSON schema/content of contract files, returns a map of module name to parsed contract object.
+    *   `buildDependencyGraph(contracts: Map<string, ModuleContract>): DependencyGraph`: Constructs graph data structure from contract dependencies.
+    *   `validateDAG(graph: DependencyGraph): boolean`: Checks for cycles in the dependency graph. Throws error if cycle detected.
+    *   `generateInterfaceStubs(contracts: Map<string, ModuleContract>, outputPath: string): Map<string, string>`: Generates TypeScript interface code strings based on contracts.
+    *   `writeFilesWithBlueprintLock(files: Map<string, string>, baseDir: string): void`: Writes file content to disk, adding the BlueprintLock header and calculating the correct hash.
+    *   `scaffoldDirectories(baseDir: string): void`: Creates necessary empty directories.
+*   **Data Flows:** Reads source files (ARCHITECTURE_SPEC, initial contracts, context, DSL, templates) from an input directory. Writes structured files (contracts, IDLs, interfaces, context, DSL, templates) into the designated repository directory.
+*   **Key Algorithms:**
+    *   **DAG Cycle Detection:** Standard graph traversal algorithms like Depth First Search (DFS) with state tracking (visiting, visited) can detect cycles efficiently.
+    *   **BlueprintLock Hashing:** Requires a specific procedure: read file content *without* the header, calculate hash, format header line, prepend header to content, calculate final hash of *total* content, replace header's placeholder hash with the final hash, write file.
+*   **Design Patterns:**
+    *   **Builder:** The IBA acts as a builder, constructing the initial repository structure step-by-step.
+    *   **Validator:** Encapsulates validation logic for contracts, DAG, etc.
 
-Post-Generation Validation: After the AI generates the complete contract document, the orchestrator performs a series of critical automated checks:
+### 3.2. Task Runner (Main Process)
 
-Schema Adherence: Verifies the output is valid JSON conforming to the CONTRACT_DOCUMENT_SCHEMA.
+*   **Responsibilities:**
+    *   Discover all module names by enumerating `contracts/*.json` files in the initialized repository.
+    *   Read the concurrency limit from the `IRONCLAD_MAX_PARALLEL` environment variable (defaulting to 1).
+    *   Manage a pool of active Job processes, respecting the concurrency limit.
+    *   For each module:
+        *   Create an isolated workspace directory (`.tmp/ironclad_tasks/<ModuleName>/`).
+        *   Copy or symlink required files into the workspace (module's contract, dependency contracts, IDLs, context, DSL spec, module's interface stub, dependency interface stubs). Use symlinks where possible to save space and time, ensuring the Job reads the canonical source files (besides its own temporary outputs).
+        *   Construct the `prompt.txt` file within the workspace by populating `prompt_templates/module_prompt.tmpl` with data from the workspace files.
+        *   Calculate and save the SHA-256 hash of the generated `prompt.txt` to `prompt.hash` in the workspace.
+        *   Spawn a new Job process within this isolated workspace.
+    *   Monitor spawned Job processes, waiting for their termination.
+    *   Aggregate results upon Job completion:
+        *   If a Job succeeds (no `final_failure.json` and generated files exist), copy the validated `src/modules/<ModuleName>.ts` and `src/modules/__tests__/<ModuleName>.test.ts` from the workspace to their canonical paths in the main repository.
+        *   If a Job fails (`final_failure.json` exists), record the path to this file.
+    *   After all Jobs complete, collate all individual `final_failure.json` reports into a single top-level `.ironclad_failures.json` file.
+    *   Execute global validation steps on the fully merged repository (full `tsc --noEmit`, global DSL validators, run integration tests).
+    *   Determine the final exit status: non-zero if `.ironclad_failures.json` exists or global validation fails; zero otherwise.
+*   **APIs (Internal Contracts):**
+    *   `discoverModules(contractsDir: string): string[]`: Finds all module names.
+    *   `prepareWorkspace(moduleName: string, repoDir: string, workspaceBaseDir: string, contracts: Map<string, ModuleContract>): string`: Creates and populates the workspace directory, returns its path.
+    *   `constructPrompt(workspaceDir: string, templatePath: string): void`: Generates and writes `prompt.txt` and `prompt.hash`.
+    *   `spawnJob(workspaceDir: string, jobScriptPath: string): ChildProcess`: Creates and starts a new process for a Job.
+    *   `awaitJobs(jobs: ChildProcess[]): Promise<JobResult[]>`: Waits for all job processes to exit and collects their status.
+    *   `mergeOutputs(jobResults: JobResult[], repoDir: string, workspaceBaseDir: string): void`: Copies successful outputs and collates failure report paths.
+    *   `collateFailureReports(failureReportPaths: string[], repoDir: string): void`: Combines individual failure reports.
+    *   `runGlobalValidation(repoDir: string): boolean`: Executes final validation checks.
+*   **Data Flows:** Reads contract and support files from the main repository. Writes task-specific files into workspace directories. Reads results from workspace directories. Writes generated code and consolidated failure reports back to the main repository.
+*   **Key Algorithms:**
+    *   **Concurrency Management:** Using a queue and tracking active job count to limit parallel execution based on `IRONCLAD_MAX_PARALLEL`.
+    *   **File/Directory Management:** Efficiently copying or symlinking files into workspaces.
+*   **Design Patterns:**
+    *   **Orchestrator:** The Task Runner coordinates the execution of multiple, independent Job tasks.
+    *   **Worker Pool:** Manages a pool of Job processes to control concurrency.
 
-Internal Consistency: Checks that dependencies and constructorParams are consistent within each module.
+### 3.3. Job (Worker Process)
 
-Architectural Integrity (Graph Validation): Verifies that every dependency listed for a module corresponds to another module that is actually defined in the contract document. It also performs a basic cross-module signature check based on the promptInstructions.
+*   **Responsibilities:**
+    *   Operate entirely within its dedicated workspace directory (`.tmp/ironclad_tasks/<ModuleName>/`).
+    *   Read the `prompt.txt` and `prompt.hash` files in the workspace. Verify the hash matches the content.
+    *   Manage the retry loop for IMG invocation and validation (maximum 3 attempts).
+    *   Invoke the IMG (external LLM API call) with the current `prompt.txt`.
+    *   Receive the JSON response from the IMG (`{ implementationCode: string, testCode: string }`).
+    *   Execute the detailed validation sequence on the generated code:
+        *   **JSON Schema Validation:** Check if the IMG response is valid JSON matching the expected structure.
+        *   **TypeScript Compilation:** Write `implementationCode` to `<ModuleName>.ts` and run `tsc --noEmit` targeting this file and the corresponding `I<ModuleName>.ts` (present in the workspace), ensuring type compatibility.
+        *   **DSL Rule Validation:** Run configured validation engines (`validation_dsl_spec.md`) against the generated code (`<ModuleName>.ts`). This might involve parsing the code (AST) and applying rules defined in the DSL spec.
+        *   **Edge Case String Check:** If the module's contract (`contracts/<ModuleName>.json`) has an `instructions.edgeCases` array, check if the generated `testCode` string contains *literal strings* matching each entry in this array. This is a simple heuristic to encourage the LLM to generate tests covering specific scenarios requested in the contract.
+        *   **Test Execution:** Write `testCode` to `__tests__/<ModuleName>.test.ts` and run the test runner (e.g., `jest __tests__/<ModuleName>.test.ts`) in isolation.
+    *   If any validation step fails:
+        *   Append details of the failure (validation type, errors) to a `failures.json` file within the workspace.
+        *   Increment the attempt counter.
+        *   Amend the `prompt.txt` file by appending a deterministic error message section detailing the *specific* validation failures encountered.
+        *   If attempts < 3, loop back to invoke IMG with the amended prompt.
+        *   If attempts = 3 and validation still fails, write a `final_failure.json` file containing the accumulated failures and terminate.
+    *   If all validation steps pass on any attempt:
+        *   Write the validated `implementationCode` to `<ModuleName>.ts` and `testCode` to `__tests__/<ModuleName>.test.ts` within the workspace.
+        *   Terminate successfully (exit code 0).
+*   **APIs (Internal/External Interactions):**
+    *   `callIMG(prompt: string): Promise<{ implementationCode: string, testCode: string }>`: Makes the API call to the IMG. Handles API key management securely (e.g., reading from environment).
+    *   `runValidation(code: string, testCode: string, moduleName: string, workspaceDir: string, contract: ModuleContract): Promise<ValidationResult[]>`: Orchestrates the sequence of validation checks.
+*   **Data Flows:** Reads configuration and prompt data from its workspace. Sends prompt data to the IMG API. Receives code/test data from the IMG API. Writes temporary code/test files and failure reports within its workspace.
+*   **Key Algorithms:**
+    *   **Retry Logic:** Implementing the fixed 3-attempt loop with prompt amendment.
+    *   **Validation Orchestration:** Sequencing and interpreting results from multiple external validation tools/scripts.
+    *   **Prompt Amendment:** Deterministically adding failure context to the prompt for retries.
+*   **Design Patterns:**
+    *   **State Machine:** The Job follows a state machine: Start -> Call IMG -> Validate -> (Success -> Exit) or (Failure -> Append Failures -> Amend Prompt -> (Attempts < 3 -> Call IMG) or (Attempts = 3 -> Write Final Failure -> Exit)).
+    *   **Strategy:** The validation sequence can be seen as applying multiple validation strategies.
 
-Output: A validated ModuleContract[] JSON document. This document is the immutable source of truth for the rest of the build process.
+### 3.4. Ironclad Module Generator (IMG)
 
-Stage 2: Parallel Module Implementation (The Factory Floor)
-This stage executes the build plan, generating the source code for each module.
+*   **Responsibilities:**
+    *   Accept a text prompt as input.
+    *   Utilize an underlying LLM to generate two distinct code strings based on the prompt: one for the module implementation and one for its unit tests.
+    *   Return the generated code strings packaged in a specific JSON format: `{ "implementationCode": "...", "testCode": "..." }`.
+*   **APIs (External Interface):**
+    *   An HTTP POST endpoint (or SDK call) expecting a JSON payload like `{ "prompt": "..." }`.
+    *   Returns a JSON payload like `{ "implementationCode": "string", "testCode": "string" }` upon success (HTTP 200).
+    *   Returns appropriate HTTP error codes (e.g., 400 for bad request, 401/403 for auth, 429 for rate limit, 500 for internal errors).
+*   **Data Flows:** Receives text prompt. Returns JSON object containing two string fields.
+*   **Key Algorithms:** Relies on the underlying LLM's internal architecture and training data. The system *calling* the IMG does not control this, only the prompt input.
+*   **Design Patterns:**
+    *   **Facade:** The IMG API acts as a facade over the potentially complex interaction with the raw LLM.
 
-Input: The validated ModuleContract[] document.
+### 3.5. Validation Engines
 
-Process:
+*   **Responsibilities:**
+    *   Execute specific checks on generated code/tests.
+    *   Each engine focuses on a single type of validation (type checking, DSL rules, test execution, string matching).
+    *   Report success or detailed failure information (line numbers, error messages) in a machine-readable format.
+*   **APIs (Internal Interface - invoked by Job):**
+    *   Scripts or library functions callable from the Job process.
+    *   E.g., `runTsc(filePath: string, interfacePath: string): Promise<ValidationResult>`
+    *   E.g., `runDslValidation(code: string, rulesSpec: string): Promise<ValidationResult[]>`
+    *   E.g., `runTests(testFilePath: string): Promise<ValidationResult>`
+    *   E.g., `checkEdgeCases(testCode: string, edgeCases: string[]): Promise<ValidationResult[]>`
+*   **Data Flows:** Read generated code/test files and relevant specification files (interfaces, DSL spec, contract). Produce validation result objects.
+*   **Key Algorithms:** Depends on the specific engine (e.g., AST parsing for DSL, compiler logic for tsc, test runner logic for Jest).
+*   **Design Patterns:**
+    *   **Strategy:** Each validation engine implements a specific validation strategy.
 
-The orchestrator reads the contract document and spawns a swarm of Module Builder agents, one for each module contract. These requests are sent in parallel.
+## 4. Data Model and Database Design
 
-Each Module Builder receives a highly detailed prompt containing its specific contract and the contextual "System Context" and "CRITICAL RULES" we developed, instructing it to act as a specialist on a team and to write production-ready, dependency-injected code.
+The Ironclad Code Generation System is designed to be largely stateless between runs, with its entire "state" residing within the file system of the repository and temporary workspaces. It does *not* rely on a traditional relational database (like PostgreSQL, MySQL) or a NoSQL database (like MongoDB, Cassandra) for its core operation or to persist long-term state about generation tasks or modules.
 
-The agent returns a JSON object containing two strings: the implementationCode and the testCode.
+The file system itself serves as the de facto "database" or data store for the system's inputs, intermediate artifacts, and outputs.
 
-Output: A collection of generated modules (code and tests), ready for verification.
+**Core Data Entities (File Types):**
 
-Stage 3: Verification, Correction, and Integration
-This is the Quality Assurance and Final Assembly stage, which closes the autonomous loop.
+1.  **ARCHITECTURE_SPEC:**
+    *   **Purpose:** Defines the overall system, lists modules, provides high-level context.
+    *   **Format:** Markdown (`.md`).
+    *   **Attributes:** System name, description, list of modules, potentially high-level relationships.
+    *   **Relationships:** Implicitly links to all module contracts listed within it.
+2.  **Module Contracts:**
+    *   **Purpose:** Formally define the interface, dependencies, and generation instructions for a single module.
+    *   **Format:** JSON (`contracts/<ModuleName>.json`).
+    *   **Attributes:**
+        *   `moduleName` (string): Unique identifier.
+        *   `description` (string): Human-readable purpose.
+        *   `interfaceDefinition` (object): Structure defining input/output types (can reference types in `idl/`).
+        *   `dependencies` (string[]): List of other `ModuleName`s this module depends on (used for DAG and workspace prep).
+        *   `instructions` (object): Specific guidance for the IMG.
+            *   `functionalDescription` (string): Detailed behavior description.
+            *   `edgeCases` (string[]): List of specific scenarios the tests *must* mention as string literals.
+            *   `generationHints` (string): Any specific coding style, library preference hints for the LLM.
+    *   **Relationships:** Directed graph structure defined by the `dependencies` array.
+3.  **IDL Files:**
+    *   **Purpose:** Define shared data structures (types, enums, interfaces) used across multiple module contracts and implementations.
+    *   **Format:** TypeScript (`idl/*.ts`).
+    *   **Attributes:** Type definitions using TypeScript syntax.
+    *   **Relationships:** Referenced by `interfaceDefinition` within Module Contracts and used by generated code.
+4.  **System Context:**
+    *   **Purpose:** Provides global context to the IMG, such as common utility libraries, architectural principles, or domain-specific jargon definitions.
+    *   **Format:** JSON (`system_context.json`).
+    *   **Attributes:** Arbitrary key-value pairs or structured data relevant to all modules.
+5.  **Validation DSL Specification:**
+    *   **Purpose:** Defines the rules that generated code must satisfy beyond type-checking and test execution.
+    *   **Format:** Markdown (`validation_dsl_spec.md`).
+    *   **Attributes:** Description of the DSL syntax and the specific rules to be enforced (e.g., "No 'any' types allowed", "All public functions must have JSDoc", "Specific forbidden library calls").
+6.  **Prompt Templates:**
+    *   **Purpose:** Define the structure and phrasing used to construct the prompt sent to the IMG.
+    *   **Format:** Plain Text (`prompt_templates/*.tmpl`).
+    *   **Attributes:** Template syntax (e.g., Handlebars, Jinja) referencing variables populated from contracts, IDLs, context, and DSL spec.
+7.  **Interface Stubs:**
+    *   **Purpose:** TypeScript interface files (`src/modules/I<ModuleName>.ts`) generated by the IBA, representing the contract surface of a module. Used by `tsc` validation to ensure generated implementation code adheres to the interface.
+    *   **Format:** TypeScript (`src/modules/I*.ts`).
+    *   **Attributes:** TypeScript interface definitions.
+    *   **Relationships:** Corresponds to a Module Contract; referenced by the generated implementation code and its dependents.
+8.  **Generated Implementation Code & Tests:**
+    *   **Purpose:** The actual source code and unit tests produced by the IMG and validated by the Job.
+    *   **Format:** TypeScript (`src/modules/<ModuleName>.ts`, `src/modules/__tests__/<ModuleName>.test.ts`).
+    *   **Attributes:** Valid TypeScript code.
+    *   **Relationships:** The implementation file must implement its corresponding interface stub (`I<ModuleName>.ts`); tests exercise the implementation.
+9.  **Failure Reports:**
+    *   **Purpose:** Record detailed information about validation failures for individual Jobs and the final aggregated status.
+    *   **Format:** JSON (`.tmp/ironclad_tasks/<ModuleName>/failures.json`, `.tmp/ironclad_tasks/<ModuleName>/final_failure.json`, `.ironclad_failures.json`).
+    *   **Attributes:** Array of failure entries, each including:
+        *   `attempt` (number)
+        *   `timestamp` (string)
+        *   `validator` (string: "json-schema", "tsc", "dsl", "edge-case", "test-runner")
+        *   `message` (string): Error description.
+        *   `details` (object): Specific error details (e.g., compiler errors with line/column, test runner output).
+    *   **Relationships:** `final_failure.json` aggregates entries from `failures.json` for a single job. `.ironclad_failures.json` aggregates `final_failure.json` from all failed jobs.
 
-Input: The collection of generated modules.
+**File System Structure as the "Schema":**
 
-Process:
+The directory structure imposes a logical schema:
+*   `contracts/`: Module contracts.
+*   `idl/`: Shared interface definitions.
+*   `system_context.json`: Global context.
+*   `validation_dsl_spec.md`: Validation rules.
+*   `prompt_templates/`: Templates for IMG prompts.
+*   `src/modules/`: Contains `I*.ts` stubs (generated by IBA) and ultimately `*.ts` implementation files (generated by IMG/Task Runner).
+*   `src/modules/__tests__/`: Contains `*.test.ts` files (generated by IMG/Task Runner).
+*   `.tmp/ironclad_tasks/`: Temporary workspaces for Jobs. Each subdirectory `<ModuleName>/` contains task-specific files:
+    *   `contracts/<ModuleName>.json` (link/copy)
+    *   `contracts/<DependencyName>.json` (links/copies)
+    *   `idl/` (link/copy)
+    *   `system_context.json` (link/copy)
+    *   `validation_dsl_spec.md` (link/copy)
+    *   `src/modules/I<ModuleName>.ts` (link/copy)
+    *   `src/modules/I<DependencyName>.ts` (links/copies)
+    *   `prompt_templates/module_prompt.tmpl` (link/copy)
+    *   `prompt.txt` (generated by Task Runner)
+    *   `prompt.hash` (generated by Task Runner)
+    *   `task.pid` (written by Job)
+    *   `failures.json` (written by Job during retries)
+    *   `final_failure.json` (written by Job on permanent failure)
+    *   `<ModuleName>.ts` (written by Job, temp)
+    *   `__tests__/<ModuleName>.test.ts` (written by Job, temp)
+*   `.ironclad_failures.json`: Aggregated failure report (written by Task Runner).
 
-Verification: For each module, the system will eventually pass its implementationCode and testCode to a sandboxed execution environment. A real test runner (e.g., Jest) is executed. The structured results (pass/fail, error messages, stack traces) are captured. (This is currently the conceptual "Final Frontier" of the implementation).
+**Database Technology Rationale:**
 
-Correction Loop: If a module fails verification, the orchestrator triggers a Corrector agent. This agent is given the module's contract, the faulty code, and the formal test report from the sandbox. It attempts to fix the code, and the result is re-submitted for verification. This loop continues for a set number of retries.
+Given that the system's data is entirely configuration, specification, code, and logs/reports, all managed within the file system and version control (Git), a dedicated database system (SQL or NoSQL) is unnecessary and would introduce undue complexity, overhead, and external dependencies. The file system provides sufficient structure, persistence, and access control for this use case. The requirements for the system's internal state (primarily the collection of files at different stages) are well-suited to file-based storage. CAP theorem considerations are not relevant here, as the system operates on local files within a single execution context, not a distributed data store. Consistency is ensured by the deterministic pipeline and validation steps operating on immutable file inputs for each stage.
 
-Dependency Failure Propagation: After all modules have either passed verification or failed definitively, the orchestrator performs a final check. If any module failed, all other modules that depend on it are also marked as failed.
+**Data Management Strategies:**
 
-Integration: An Integrator agent receives the final list of verified, successful modules and the original contract document. It performs a topological sort on the dependency graph and generates the main entry point file (main.ts), correctly importing and instantiating all modules with their dependencies.
+*   **Versioning:** Handled entirely by Git for all source files (contracts, IDLs, specs, templates) and generated code.
+*   **Immutability:** Input files for the Task Runner (generated by IBA) are treated as immutable during the generation process. The `BlueprintLock` header reinforces this for IBA outputs.
+*   **Isolation:** Workspaces provide data isolation for individual generation Jobs, preventing interference.
+*   **Cleanup:** Temporary workspace directories (`.tmp/ironclad_tasks/`) should be cleaned up after the Task Runner completes, regardless of success or failure, to conserve disk space.
 
-Final Assembly: The Integrator also generates supporting files like the README.md, package.json, and tsconfig.json. The entire project is then assembled into the correct file structure.
+## 5. API Design and Endpoints (Public/External)
 
-Output: A complete, downloadable project archive (.zip) containing the source code, tests, and configuration files.
+The Ironclad Code Generation System is primarily a command-line interface (CLI) tool designed to be integrated into development workflows and CI/CD pipelines. It does not expose a traditional web-based REST API for its core generation process. Its public interface is the command-line entry point and the structure/content of the files it reads and writes.
+
+However, it *interacts* with an external API for the Ironclad Module Generator (IMG). This interaction is an internal detail of the Job process, but the specification of the IMG API endpoint is crucial for understanding the system's external dependencies.
+
+**Public Interface (CLI):**
+
+The system is invoked via a command-line command, potentially with subcommands for the different phases.
+
+*   **Command Structure:**
+    ```bash
+    ironclad <command> [options]
+    ```
+*   **IBA Command:**
+    ```bash
+    ironclad blueprint build <architecture-spec-path> --output <repository-path>
+    ```
+    *   **Purpose:** Executes the Ironclad Blueprint Architect phase.
+    *   **Inputs:**
+        *   `<architecture-spec-path>` (string, required): Path to the main `ARCHITECTURE_SPEC.md` file.
+        *   `--output <repository-path>` (string, required): Directory where the repository skeleton will be created/initialized.
+        *   `--contracts-dir <path>` (string, optional): Directory containing initial module contracts (default: relative to spec path).
+        *   `--idls-dir <path>` (string, optional): Directory containing initial IDL files (default: relative to spec path).
+        *   `--context-file <path>` (string, optional): Path to initial `system_context.json` (default: relative to spec path).
+        *   `--dsl-file <path>` (string, optional): Path to initial `validation_dsl_spec.md` (default: relative to spec path).
+        *   `--template-dir <path>` (string, optional): Directory containing initial prompt templates (default: relative to spec path).
+    *   **Outputs:**
+        *   Creates/populates the directory structure at `<repository-path>` with all non-implementation files including BlueprintLock headers.
+        *   Standard output/error stream for progress, validation errors (especially DAG cycles).
+        *   Exit code 0 on success, non-zero on failure.
+*   **Task Runner Command:**
+    ```bash
+    ironclad generate run <repository-path>
+    ```
+    *   **Purpose:** Executes the Task Runner code generation and validation phase.
+    *   **Inputs:**
+        *   `<repository-path>` (string, required): Path to the repository directory initialized by the IBA.
+        *   Environment Variable: `IRONCLAD_MAX_PARALLEL` (integer, optional): Maximum number of concurrent Jobs (default: 1).
+        *   Environment Variable: `IMG_API_KEY` (string, required for IMG interaction): API key for authentication with the IMG endpoint.
+        *   Environment Variable: `IMG_API_URL` (string, required for IMG interaction): URL of the IMG endpoint.
+    *   **Outputs:**
+        *   Modifies files within `<repository-path>` by adding successfully generated `src/modules/*.ts` and `src/modules/__tests__/*.test.ts`.
+        *   Writes `.ironclad_failures.json` at the top level of `<repository-path>` if any Job or global validation failed.
+        *   Standard output/error stream for Task Runner progress, Job status updates, and global validation results.
+        *   Exit code 0 on success (all modules generated/validated, global validation passed), non-zero on failure.
+
+**External API (IMG Interaction - Internal to System):**
+
+The Job process interacts with the IMG, which is treated as an external service. The specific API contract is as follows:
+
+*   **Endpoint:** Configurable via `IMG_API_URL` environment variable. Assumed to be a single POST endpoint, e.g., `POST /generate`.
+*   **HTTP Method:** `POST`.
+*   **Request Format (JSON):**
+    ```json
+    {
+      "prompt": "string"
+    }
+    ```
+    *   `prompt`: The detailed text prompt generated by the Task Runner for a specific module, containing instructions, context, interfaces, etc.
+*   **Request Headers:**
+    *   `Content-Type: application/json`
+    *   `Authorization: Bearer <IMG_API_KEY>` (Example using bearer token, actual scheme depends on IMG provider, could be custom header `X-IMG-API-Key`). The API key is read from `IMG_API_KEY` environment variable by the Job.
+*   **Response Format (JSON):**
+    ```json
+    {
+      "implementationCode": "string",
+      "testCode": "string"
+    }
+    ```
+    *   `implementationCode`: The generated TypeScript source code for the module implementation.
+    *   `testCode`: The generated TypeScript source code for the module's unit tests.
+*   **HTTP Status Codes:**
+    *   `200 OK`: Successfully generated code. Response body contains the JSON payload.
+    *   `400 Bad Request`: Prompt was invalid or malformed.
+    *   `401 Unauthorized`: Invalid or missing API key.
+    *   `403 Forbidden`: API key lacks necessary permissions.
+    *   `429 Too Many Requests`: Rate limit exceeded.
+    *   `500 Internal Server Error`: An error occurred within the IMG service (e.g., LLM failure).
+    *   Other 4xx/5xx codes for specific errors.
+*   **Authentication:** Token-based authentication using an API key passed via an HTTP header.
+*   **Versioning:** Assumed to be handled by the IMG service itself (e.g., endpoint path `/v1/generate`). The Task Runner would be configured with the specific versioned URL via `IMG_API_URL`. The system's reliance on prompt structure implies a strong coupling to the specific IMG model/version it was developed against. Changes to the IMG might require updates to prompt templates and validation logic.
+*   **Rate Limiting:** Expected to be enforced by the IMG provider. The Task Runner manages *local* concurrency (`IRONCLAD_MAX_PARALLEL`), but the IMG provider might have its own limits. The Job process should ideally implement exponential backoff and retry for 429 errors if the IMG API supports it, though the current spec only mentions retries for generation/validation failures (which *might* stem from IMG errors). The Job's 3-attempt limit implicitly handles persistent IMG failures.
+
+This design clearly separates the public CLI interface for system users from the internal API interaction with the external IMG service.
+
+## 6. User Interface (UI) and User Experience (UX) Design
+
+The Ironclad Code Generation System operates primarily as a backend tool without a dedicated graphical user interface (GUI). Its "UI" is the command line interface (CLI) and the file system structure of the repository. The "UX" is centered around ease of command execution, clarity of output (console and files), predictability of file locations, and the overall developer workflow integration.
+
+**User Personas:**
+
+1.  **Architect/System Designer:**
+    *   **Goals:** Define the system structure, module boundaries, contracts, and validation rules using ARCHITECTURE_SPEC, contracts, IDLs, system context, and DSL spec files. Ensure architectural compliance and consistency across modules.
+    *   **Interaction:** Primarily interacts with the system by creating and modifying input files in the repository, running the `ironclad blueprint build` command, and reviewing the initial repository structure generated by the IBA.
+2.  **Module Developer:**
+    *   **Goals:** Focus on implementing specific domain logic, potentially writing manual code where LLM generation is insufficient. Review generated code for correctness, efficiency, and adherence to requirements. Debug validation failures reported by the system.
+    *   **Interaction:** Creates/modifies module contracts (`contracts/*.json`) and related IDLs (`idl/*.ts`). Runs the `ironclad generate run` command (often implicitly via CI). Reviews the generated `src/*.ts` and `src/__tests__/*.test.ts` files. Reads the `.ironclad_failures.json` report to understand why a module failed generation/validation and potentially debug/amend the prompt or contracts.
+3.  **CI/CD Engineer:**
+    *   **Goals:** Integrate the Ironclad system into the automated build pipeline. Ensure successful execution, monitor for failures, and report status. Manage environment configuration (like `IRONCLAD_MAX_PARALLEL`, `IMG_API_KEY`).
+    *   **Interaction:** Configures build scripts to run `ironclad blueprint build` followed by `ironclad generate run` on relevant commits. Monitors standard output/error, checks the process exit code, and makes the `.ironclad_failures.json` report available in the CI dashboard.
+4.  **Validation Rule Author:**
+    *   **Goals:** Define and refine validation rules in the `validation_dsl_spec.md` to enforce coding standards, security policies, or architectural constraints.
+    *   **Interaction:** Creates/modifies `validation_dsl_spec.md`. Relies on the system's validation engines to correctly interpret and apply these rules during the `ironclad generate run` phase.
+
+**User Flows/Journeys:**
+
+1.  **Initial System Setup:**
+    *   Architect defines initial ARCHITECTURE_SPEC, core contracts, IDLs, context, DSL spec, prompt templates.
+    *   Architect runs `ironclad blueprint build <spec> --output <repo>`.
+    *   System validates inputs (e.g., DAG).
+    *   System scaffolds repository, generates interface stubs, adds BlueprintLocks.
+    *   Architect reviews generated repository structure and interface stubs.
+2.  **Generating Initial Modules:**
+    *   Architect/Developer ensures contracts are complete.
+    *   CI/CD pipeline or Developer runs `ironclad generate run <repo>` (with `IRONCLAD_MAX_PARALLEL` set).
+    *   Task Runner discovers modules, prepares workspaces, spawns Jobs.
+    *   Jobs invoke IMG, run validation loop.
+    *   Task Runner aggregates results.
+    *   If successful, generated code is merged. CI/CD reports success.
+    *   If failures, Task Runner writes `.ironclad_failures.json`. CI/CD reports failure.
+    *   Developer reviews `.ironclad_failures.json` to identify failed modules and reasons.
+3.  **Iterating on Failed Modules:**
+    *   Developer reads `final_failure.json` (collated in `.ironclad_failures.json`).
+    *   Developer modifies the contract (`contracts/<ModuleName>.json`) or potentially the `system_context.json` or `validation_dsl_spec.md` to guide the LLM or adjust rules. *Note: Directly editing the prompt.txt or generated code is against the system's philosophy; inputs (contracts, context, rules, templates) should be modified to influence output.*
+    *   Developer commits changes.
+    *   CI/CD pipeline runs `ironclad blueprint build` (to regenerate interface stubs if contracts changed, and update BlueprintLocks) and then `ironclad generate run`.
+    *   Repeat until module generation and validation pass.
+4.  **Adding New Modules or Features:**
+    *   Architect defines new module contract(s) and updates ARCHITECTURE_SPEC. Adds/updates IDLs if needed.
+    *   Developer commits changes.
+    *   CI/CD runs the full pipeline.
+
+**Conceptual Wireframes/Mockups (Described):**
+
+*   **CLI Output:**
+    *   Progress indicators (e.g., `[IBA] Validating contracts... OK`, `[IBA] Scaffolding repository... OK`).
+    *   Task Runner startup: `Discovering modules... Found 15 modules.`
+    *   Job spawning: `[Task Runner] Spawning job for UserService (PID 12345)`
+    *   Job status updates (if implemented, e.g., via logging): `[Job UserService] Attempt 1: Calling IMG...`, `[Job UserService] Attempt 1: Validation failed (tsc error). Retrying...`, `[Job ProductService] Attempt 1: Validation successful. Merging output.`
+    *   Task Runner aggregation: `[Task Runner] All jobs completed. 12 successful, 3 failed.`
+    *   Global validation: `[Task Runner] Running global validation (full tsc)... OK.`, `[Task Runner] Running global validation (integration tests)... FAILED.`
+    *   Final summary: `BUILD FAILED. See .ironclad_failures.json for details.` or `BUILD SUCCESSFUL.`.
+*   **`.ironclad_failures.json` Structure:** A clear, well-formatted JSON array, easy for machines to parse and humans to read, listing failures grouped by module, attempt, and validation step, including error messages and potentially code snippets or line numbers.
+
+**UI Technology Choices:**
+
+*   **CLI Framework:** A Node.js CLI framework (e.g., Commander, Oclif, Yargs) to handle command parsing, options, help messages, and colored output.
+*   **Output Formatting:** Standard console logging (`console.log`, `console.error`) for basic progress and status. Libraries for structured logging and potentially richer console output (e.g., spinners, progress bars for Job execution) could enhance UX. JSON formatting libraries for `.ironclad_failures.json`.
+
+**State Management:**
+
+The system is largely stateless between command invocations. The "state" is the file system contents. Within a single `ironclad generate run` execution, the Task Runner manages the state of the generation process:
+*   List of modules to process.
+*   Queue of modules awaiting generation.
+*   List of active Jobs.
+*   Tracking of completed Jobs (success/failure).
+*   Accumulation of failure report paths.
+
+This state is managed in memory by the Task Runner process and discarded upon completion. Job processes manage their own state within their retry loop (attempt counter, accumulated failures) using in-memory variables and the `failures.json` file in their workspace.
+
+**Usability, Accessibility, Responsive Design:**
+
+*   **Usability:** Focused on clarity of CLI commands, predictable file inputs/outputs, informative console messages, and a well-structured failure report file that facilitates debugging. The isolation of jobs makes debugging individual module failures easier (inspecting the workspace).
+*   **Accessibility:** As a CLI tool, traditional accessibility concerns (screen reader compatibility with graphical elements) are not applicable. Output is text-based, suitable for standard terminal access. Ensuring clear, concise language in messages and documentation is key for cognitive accessibility.
+*   **Responsive Design:** Not applicable to a CLI tool. Performance considerations relate to execution time and resource usage, not adapting to different screen sizes.
+
+## 7. Authentication and Authorization Strategy
+
+The Ironclad Code Generation System's authentication and authorization needs are relatively simple compared to a multi-user, web-facing application. The system primarily operates within a controlled environment (developer machine or CI/CD runner) and its security model is built around file system permissions and secure handling of credentials for external services.
+
+**Authentication:**
+
+*   **System Users (Developers, CI/CD):** The system itself does not implement user authentication. Access to run the `ironclad` commands and modify the input/output files is controlled by the operating system's file permissions and the version control system (Git) access controls. Users are implicitly authenticated by their ability to log in to the machine or CI environment and interact with the repository files.
+*   **IMG API:** The *most critical* authentication requirement is for the Job processes to securely authenticate with the external Ironclad Module Generator (IMG) API.
+    *   **Mechanism:** The IMG API is expected to use an API key or token-based authentication. The specific scheme (e.g., Bearer token in `Authorization` header, custom header like `X-IMG-API-Key`) depends on the IMG provider.
+    *   **Credential Management:** The IMG API key (`IMG_API_KEY`) MUST NOT be hardcoded in source code or configuration files checked into version control. It MUST be provided to the `ironclad generate run` process securely, typically via environment variables or a secret management system integrated into the CI/CD environment (e.g., HashiCorp Vault, AWS Secrets Manager, Kubernetes Secrets, GitHub Actions Secrets, GitLab CI/CD Variables).
+    *   **Implementation:** The Job process, when making the `callIMG` API request, will read the `IMG_API_KEY` environment variable (or fetch it from a configured secret source) and include it in the appropriate request header.
+
+**Authorization:**
+
+*   **System Users:** Authorization is managed by the underlying OS and Git permissions. Users who have write access to the repository can run the tools and modify files. Users with read access can run the tools and view inputs/outputs but not modify them in the repository.
+*   **IMG API:** The IMG API key/token should ideally have the *least privilege* necessary. Its *only* authorized action should be to invoke the code generation endpoint (`/generate`). It should not have permissions to access other services or data within the IMG provider's infrastructure. This principle of least privilege limits the blast radius if a key is compromised. The IMG service itself is responsible for enforcing this authorization based on the provided key.
+*   **Internal System Authorization:** Within the Ironclad system processes (IBA, Task Runner, Job), authorization is implicit based on the process's identity and the file system permissions of the user running the command.
+    *   The Task Runner and Jobs need read/write access to the `.tmp/ironclad_tasks/` directory and read/write access to the main repository directory (`<repository-path>`) to read inputs, write outputs, and merge results.
+    *   The IBA needs write access to create/initialize the repository directory.
+
+**Identity Provider Integration:**
+
+No external identity provider (like Okta, Auth0, Active Directory Federation Services) is required for the Ironclad system itself, as it doesn't manage user identities or logins. The system relies on the identity context provided by the execution environment (the user running the command, the CI/CD runner's identity).
+
+**Permissions Enforcement:**
+
+*   **File System:** The operating system enforces read/write permissions on files and directories.
+*   **Git:** Git hosting platforms enforce push/pull permissions on the repository.
+*   **IMG API:** The IMG provider enforces authorization based on the API key presented with each request.
+*   **Within Ironclad:** The system's components rely on each other's outputs being available in the file system and trust that they are operating under sufficient permissions granted by the execution environment. There is no internal permission layer between the IBA, Task Runner, and Job processes beyond the file system.
+
+**Secure Credential Handling:**
+
+*   API keys MUST NOT be stored directly in configuration files or the repository.
+*   Environment variables are the minimal acceptable mechanism for passing secrets in automated environments.
+*   Integration with dedicated secret management systems is the recommended best practice for production CI/CD pipelines.
+*   The Job process should load the key from the environment variable *just before* making the API call and avoid logging the key value.
+
+In summary, the security model is focused on securing access to the repository files via standard OS/Git controls and, crucially, handling the external IMG API key with robust secret management practices.
+
+## 8. Security Considerations and Threat Model
+
+Developing an automated code generation system that interacts with potentially untrusted inputs (developer-provided specifications, external LLMs) and produces executable code necessitates a strong focus on security. The threat model considers potential vulnerabilities throughout the pipeline.
+
+**Threat Model (STRIDE/DREAD applied to key components):**
+
+| Threat Category    | Description                                                                                                | Affected Components     | Potential Impact                                                                   |
+| :----------------- | :--------------------------------------------------------------------------------------------------------- | :---------------------- | :--------------------------------------------------------------------------------- |
+| **Spoofing**       | Forging BlueprintLock hashes to disguise tampering.                                                        | IBA, Task Runner (Validation) | Compromised integrity verification, allowing malicious changes to inputs or outputs. |
+| **Tampering**      | Modifying input files (specs, contracts, templates) after IBA processing but before/during Task Runner execution. | Repository Files        | Injecting malicious instructions, altering contracts, breaking validation rules.   |
+|                    | Modifying generated code/tests within a workspace before validation.                                     | Task Workspace          | Bypassing validation, injecting vulnerabilities into final code.                   |
+|                    | Modifying the IMG API response before it reaches the Job.                                                | IMG API Call            | Injecting malicious code, invalid code.                                            |
+| **Repudiation**    | Denying that a specific generation run produced certain code.                                              | Entire System           | Difficulty auditing code origin and changes.                                       |
+| **Information Disclosure** | Leaking sensitive information (e.g., IMG API keys, internal system details) via logs or files.            | Job, Task Runner, Logs  | Compromise of external accounts, exposure of internal architecture.                |
+| **Denial of Service** | Providing overly complex inputs (large contracts, deep dependency graphs) consuming excessive resources.   | IBA, Task Runner        | Slowing down or crashing the system.                                               |
+|                    | Triggering excessive IMG API calls (rate limits, costs).                                                   | Job (via Retries)       | Financial costs, service disruption.                                               |
+|                    | Generating enormous code files causing storage/memory issues.                                              | IMG, Job, Task Runner   | System instability, disk filling.                                                  |
+| **Elevation of Privilege** | Generating code that, when run later, exploits vulnerabilities in its execution environment.               | IMG (Code Output)       | Depends on deployment environment; standard code execution risks.                  |
+|                    | Exploiting vulnerabilities in the Ironclad tool itself to gain unauthorized access.                      | IBA, Task Runner, Job   | Compromise of the build environment.                                               |
+
+**OWASP Top 10 (Applied to the concept):**
+
+While not a web application, certain principles apply:
+*   **A01: Broken Access Control:** Relevant to file system permissions and IMG API key scope.
+*   **A03: Injection:** Prompt injection into the LLM is a major risk – crafting inputs (contracts, context, templates) that manipulate the LLM into generating unintended or malicious code.
+*   **A05: Security Misconfiguration:** Improperly configured validation rules, lax file permissions, insecure handling of IMG API key.
+*   **A08: Software and Data Integrity Failures:** Lack of integrity checks on inputs/outputs, reliance on untrusted components (LLM). BlueprintLock directly addresses data integrity.
+
+**Countermeasures:**
+
+1.  **Input Validation and Sanitization:**
+    *   Rigorously validate the structure and content of all input files (ARCHITECTURE_SPEC, contracts, context, DSL spec, templates). Use JSON schema validation for contracts and context.
+    *   Sanitize any input data incorporated into the IMG prompt to minimize prompt injection risks. While complete sanitization for LLMs is hard, filter out potentially harmful control characters or excessively long/complex sequences.
+    *   Validate the dependency graph for cycles in the IBA.
+2.  **Output Validation and Static Analysis:**
+    *   The multi-step validation process within the Job is the primary defense against malicious or incorrect LLM output.
+    *   **Static Analysis:** `tsc` provides strong type safety. Implement robust DSL validation that can parse code (e.g., using Abstract Syntax Trees - ASTs) and enforce structural/syntactic rules. Integrate standard linters (ESLint, Prettier) and security linters (Semgrep, SonarQube scanner) into the validation sequence.
+    *   **Edge Case Checks:** While basic, the string literal check for edge cases encourages the LLM to include specific functional coverage in tests.
+    *   **Test Execution:** Running generated tests provides dynamic validation of functional correctness.
+    *   **Global Validation:** Full project type check and integration tests catch issues arising from inter-module dependencies or the merging process.
+3.  **Execution Isolation:**
+    *   Run each Job in a strictly isolated environment (separate process, potentially a container or sandbox). The temporary workspace directory should ideally be mounted with restricted permissions.
+    *   Limit the resources (CPU, memory, network access) available to Job processes to mitigate DoS threats from resource-hungry generations or infinite loops in tests.
+4.  **Secure Credential Management (Secrets Management):**
+    *   Use environment variables *at minimum* for non-sensitive configuration.
+    *   For sensitive credentials like the `IMG_API_KEY`, use a dedicated secret management system (HashiCorp Vault, cloud provider secrets managers) integrated into the CI/CD pipeline.
+    *   Fetch secrets just-in-time within the Job process and do not write them to disk or logs.
+5.  **Integrity Verification (BlueprintLock):**
+    *   The `BlueprintLock: sha256:<hash>` header implemented by the IBA provides a mechanism to verify that the core architectural blueprint files (contracts, IDLs, specs, templates, interface stubs) have not been tampered with after the initial build phase. The Task Runner or a separate verification tool should ideally re-check these hashes before starting generation and after merging.
+6.  **Secure Coding Practices:**
+    *   Develop the Ironclad tooling itself (IBA, Task Runner, Job logic, Validation Engines) using secure coding principles.
+    *   Perform static analysis and dependency scanning on the Ironclad tool's codebase to prevent vulnerabilities in the tooling itself.
+7.  **Logging and Monitoring:**
+    *   Implement comprehensive logging of the generation process, including prompts sent to the IMG (sanitized if necessary), IMG responses, validation results, and failure details.
+    *   Monitor system resource usage and execution times to detect potential DoS attempts or inefficient generations.
+8.  **Principle of Least Privilege:**
+    *   The user/service account running the Ironclad tools should have only the necessary file system permissions.
+    *   The IMG API key should have minimal permissions on the IMG provider's side.
+9.  **Dependency Scanning and Vulnerability Management:**
+    *   Regularly scan the Ironclad tool's dependencies for known vulnerabilities.
+    *   Implement a process for patching or updating dependencies promptly.
+10. **Deterministic Behavior:** The emphasis on determinism (given the same inputs, produce the same outputs) is a security benefit as it makes unexpected changes easier to spot and verify.
+
+By combining rigorous input/output validation, process isolation, secure credential handling, integrity checks, and secure development practices for the tool itself, the Ironclad system can mitigate many of the inherent risks associated with automated code generation using external AI models.
+
+## 9. Scalability, Performance, and Resilience
+
+The Ironclad Code Generation System's architecture is designed with scalability, performance, and resilience in mind, primarily within the context of a build pipeline execution.
+
+**Scalability:**
+
+*   **User Growth:** The system is not a multi-user online service, so user concurrency isn't a direct scaling concern in the traditional sense. Scalability relates to the number of modules being managed and generated by a development team or organization.
+*   **Module Growth:** The architecture scales horizontally with the number of modules by processing them in parallel. The `IRONCLAD_MAX_PARALLEL` environment variable is the primary knob for controlling this concurrency.
+*   **Data Volume:** The data volume primarily consists of source files (contracts, specs) and generated code. While this grows with the project size, it's managed by the file system and version control, which are assumed to handle large volumes. Large individual files (e.g., huge generated code files) could pose issues, but typical module sizes should be manageable.
+*   **Transaction Rates:** The "transactions" are module generation tasks. The system scales by increasing the rate at which these tasks are processed concurrently.
+*   **Bottlenecks:**
+    *   **LLM API Throughput/Rate Limits:** The IMG API is an external dependency and a likely bottleneck. Batching requests (if the API supports it) or simply increasing `IRONCLAD_MAX_PARALLEL` up to the API's limit are factors. High LLM latency directly impacts Job duration.
+    *   **Validation Engine Performance:** Running `tsc`, linters, test runners for each job can be CPU-intensive. Slow validation engines will bottleneck the Job completion rate.
+    *   **File I/O:** Creating/populating workspaces and merging outputs involves significant file operations, which can be a bottleneck on slow storage.
+    *   **CPU/Memory Resources:** The Task Runner and multiple concurrent Jobs consume CPU and memory. The available resources on the build machine/container limit `IRONCLAD_MAX_PARALLEL`.
+    *   **DAG Structure:** While DAG ensures no circular dependencies, a very deep or wide DAG might imply complex interdependencies that, while not blocking *generation*, could complicate *global validation* or make individual module testing/validation slower due to loading many dependencies.
+
+**Scaling Approaches:**
+
+*   **Horizontal Scaling (within a single run):** The `IRONCLAD_MAX_PARALLEL` setting enables running multiple Jobs concurrently on a single machine/runner. This is the primary built-in scaling mechanism.
+*   **Horizontal Scaling (across build agents):** For very large projects, the module set could theoretically be partitioned and assigned to different CI build agents, each running a subset of the modules using the Task Runner. The current architecture assumes a single runner, but the isolation of jobs makes this distributed approach conceptually possible with an external orchestration layer.
+*   **Vertical Scaling:** Running the Task Runner and Jobs on a more powerful machine with more CPU cores and RAM will allow increasing `IRONCLAD_MAX_PARALLEL` and potentially speed up validation steps.
+*   **Caching:**
+    *   **Dependency Caching (CI):** Standard CI practices (e.g., caching `node_modules`) apply to the Ironclad tool's dependencies and the dependencies needed by the generated code/tests.
+    *   **LLM Response Caching:** This is complex and must be done carefully. Caching LLM outputs for a given prompt hash (`prompt.hash`) could drastically speed up regeneration if inputs haven't changed. However, this breaks the direct interaction with the LLM and must be bypassable. It also requires a cache invalidation strategy if the underlying LLM model changes or is updated. *This is a potential future enhancement, not in the core design.*
+    *   **Validation Results Caching:** If a module's inputs (contract, dependencies, context, templates) and the IMG response haven't changed, and the validation engines are versioned, validation results could potentially be cached. Again, complex invalidation rules apply. *Future enhancement.*
+
+**Performance Targets:**
+
+Quantitative performance targets would be set based on project needs, e.g.:
+*   **Overall Pipeline Latency:** The time from starting `ironclad generate run` to getting a success/failure exit code. Target could be, e.g., < 10 minutes for a project of N modules.
+*   **Module Generation Throughput:** Number of modules successfully generated and validated per minute, given `IRONCLAD_MAX_PARALLEL`.
+*   **Job Latency:** Average time taken for a single Job (including retries). Target could be, e.g., < 2 minutes per module.
+*   **Validation Step Latency:** Performance targets for individual validation steps (tsc, dsl, test runner).
+
+Achieving these targets relies heavily on tuning `IRONCLAD_MAX_PARALLEL`, the performance of the chosen LLM and its API, and the efficiency of the validation engines.
+
+**Resilience:**
+
+*   **Job Isolation:** Failure in one Job (due to bad LLM output, validation error, or transient issue) does NOT affect other concurrent Jobs or the main Task Runner process. This is a core resilience mechanism.
+*   **IMG Call Retries:** The 3-attempt retry loop within each Job handles transient network issues or temporary LLM glitches. Prompt amendment helps the LLM potentially correct previous mistakes.
+*   **Failure Reporting:** The system doesn't crash silently. Failures are explicitly captured in `final_failure.json` and aggregated into `.ironclad_failures.json`, providing transparency and enabling debugging.
+*   **Deterministic Behavior:** Aids resilience by making failures reproducible and easier to diagnose.
+*   **Idempotency (Partial):** While not fully idempotent (re-running changes the repository), the Job processing *within a workspace* aims for idempotency per attempt - the same prompt to the same IMG version should ideally yield the same result, leading to deterministic validation results for that attempt. The overall process isn't fully idempotent because retries modify the prompt, and successful runs modify the repository. However, given the *same* input repository state, `ironclad generate run` should produce the *same* output repository state (including `.ironclad_failures.json`).
+*   **Task Runner Robustness:** The Task Runner needs to gracefully handle Job process crashes (non-zero exit codes, signals) and report them correctly.
+*   **BlueprintLock:** While not directly related to runtime resilience, it ensures the integrity of the *blueprint*, which is foundational for reliable generation.
+
+**High Availability / Fault Tolerance:**
+
+HA/FT concepts like failover and redundancy are not directly applicable to the Ironclad tool itself, as it's an on-demand process, not a continuously running service. Its "availability" is tied to the availability of the build environment (developer machine, CI runner) and the external IMG service. The resilience features ensure that a single *run* of the tool is as likely to succeed as possible, and failures are contained and reported. The CI/CD environment provides the overall fault tolerance by allowing failed builds to be retried.
+
+## 10. Deployment Strategy and Infrastructure
+
+The Ironclad Code Generation System is designed to be deployed and executed within standard software development build environments. It is not a service requiring dedicated infrastructure like a production cluster.
+
+**CI/CD Pipeline:**
+
+The system is intended to be a key step in the build pipeline.
+
+*   **Tools:** Compatible with common CI/CD platforms (Jenkins, GitHub Actions, GitLab CI, Azure DevOps Pipelines, CircleCI, etc.). Relies on standard build runners capable of executing shell commands, Node.js, and having access to necessary tools like `tsc`, test runners (Jest/Mocha), linters.
+*   **Stages:** A typical pipeline involving Ironclad would include:
+    1.  **Checkout:** Get the source code from the Git repository.
+    2.  **Environment Setup:** Install Node.js, Ironclad tool dependencies, validation engine dependencies (tsc, test runner, linters). Set environment variables (`IRONCLAD_MAX_PARALLEL`, `IMG_API_KEY`, `IMG_API_URL`).
+    3.  **IBA Build:** Run `ironclad blueprint build <spec> --output <repo>`. Fail the build if this step fails (e.g., DAG cycle).
+    4.  **Task Runner Generation:** Run `ironclad generate run <repo>`. This is the core generation and validation step.
+    5.  **Check Results:** Check the exit code of the Task Runner. If non-zero, fail the build.
+    6.  **(Optional) Artifacts:** Publish the `.ironclad_failures.json` file as a build artifact.
+    7.  **(Optional) Further Checks:** Run additional steps on the generated code, like security scanning, complexity analysis, deployment manifest generation (potentially using Ironclad principles for *generating* those manifests too).
+    8.  **Commit/Merge:** If the build is successful (both IBA and Task Runner passed), the generated code can be committed back to a specific branch (e.g., `generated/main`) or used directly for deployment downstream in the pipeline. *Self-correction: Automatically committing generated code back to the source branch can be problematic for Git history and merge conflicts. A common pattern is to generate code on a feature branch and include it in the PR, or generate it on a dedicated branch, or generate it as a build artifact used only for deployment.* The architecture supports generating the code *into* the working directory, making any of these post-generation steps feasible.
+
+**Hosting Environment:**
+
+*   The system runs within the build environment provided by the CI/CD platform. This can be:
+    *   **Managed Cloud CI Runners:** (e.g., GitHub Actions runners, GitLab shared runners, AWS CodeBuild).
+    *   **Self-Hosted CI Runners:** Virtual machines or physical servers managed by the organization.
+    *   **Developer Machines:** For local development and testing.
+*   Requires a compatible operating system (Linux, macOS, Windows) and sufficient resources (CPU, RAM, Disk) to support the Ironclad tool and its spawned Jobs.
+
+**Containerization (Docker):**
+
+*   **Recommendation:** Containerizing the Ironclad tool and its dependencies within a Docker image is highly recommended.
+*   **Benefits:**
+    *   **Consistency:** Ensures the same environment (Node.js version, tool versions, libraries) is used across all build agents, eliminating "it works on my machine" issues.
+    *   **Isolation:** Provides a clean environment for each build run, avoiding conflicts with other software on the runner.
+    *   **Simplified Setup:** Dependencies are pre-packaged in the image.
+    *   **Portability:** The Docker image can be run easily on any machine or CI platform that supports Docker.
+*   **Implementation:** A `Dockerfile` would define the base image (e.g., Node.js), install the Ironclad tool's dependencies, install validation tools (tsc, test runner, linters), and set up the entry point. The CI pipeline would pull and run this container image.
+
+**Infrastructure as Code (IaC):**
+
+*   IaC (Terraform, CloudFormation, Pulumi) is not used to deploy the Ironclad *tool* itself, as it's not a long-running service.
+*   IaC *is* relevant for provisioning the *build environment* where Ironclad runs (e.g., EC2 instances for self-hosted runners, configuring cloud CI services).
+*   Furthermore, the *output* of the Ironclad system could *include* IaC definitions or deployment manifests (e.g., Kubernetes YAML, CloudFormation templates) for the generated modules, enabling automated infrastructure provisioning for the built services. This is a potential future enhancement leveraging the generation capabilities.
+
+**Deployment Strategies for Generated Code:**
+
+The Ironclad system focuses on generating code. The deployment of the *generated services* would follow standard practices for the chosen technology stack (e.g., building Docker images for each service, deploying to Kubernetes, Serverless functions, etc.). The Ironclad output provides the source code artifact for this process.
+
+**Environment Configuration Management:**
+
+*   **Build-time Configuration:** Configuration specific to the build process (like `IRONCLAD_MAX_PARALLEL`, paths) is managed via environment variables or command-line flags passed to the `ironclad` command.
+*   **Runtime Configuration (of generated code):** Configuration needed by the *generated services* at runtime should be handled separately, likely defined in configuration files within the repository (potentially also generated/managed by Ironclad principles) and injected into the service environment using standard practices (ConfigMaps in Kubernetes, Parameter Store, environment variables).
+
+**Blue/Green or Canary Deployment:**
+
+These strategies are deployment patterns for the *generated services*, not the Ironclad build tool itself. The Ironclad system contributes to these strategies by providing potentially higher-quality, more consistent code artifacts.
+
+Overall, the deployment strategy for Ironclad is tightly coupled with the organization's CI/CD practices, treating the tool as a standard build dependency executed within a containerized and securely configured environment.
+
+## 11. Monitoring, Logging, and Observability
+
+Effective monitoring, logging, and observability are crucial for understanding the behavior of the Ironclad code generation pipeline, diagnosing failures, identifying performance bottlenecks, and ensuring the system is operating correctly within the CI/CD environment.
+
+**Logging Strategy:**
+
+*   **Structured Logging:** All components (IBA, Task Runner, Jobs, Validation Engines) should emit structured logs, preferably in JSON format. This makes logs easy to parse, filter, and analyze by automated systems.
+*   **Log Levels:** Use standard log levels (DEBUG, INFO, WARN, ERROR, FATAL) to control verbosity.
+*   **Contextual Information:** Logs MUST include contextual information to identify the source and related task:
+    *   `timestamp`
+    *   `level`
+    *   `component` (e.g., "IBA", "TaskRunner", "Job")
+    *   `message` (human-readable summary)
+    *   `taskId` (unique ID for the Task Runner run)
+    *   `module` (for Job-specific logs, the module name)
+    *   `attempt` (for Job retry loop logs)
+    *   `validationStep` (for validation engine logs)
+    *   `details` (structured object for error messages, validation output, etc.)
+*   **Log Destination:**
+    *   During local development, logs are printed to the console (stdout/stderr).
+    *   In CI/CD, logs should be captured by the CI platform's logging mechanism. Ideally, these logs are shipped to a centralized logging system (e.g., ELK stack, Splunk, Datadog Logs, CloudWatch Logs) for aggregation, search, and analysis.
+*   **Sensitive Data:** Logs MUST NOT contain sensitive information, especially the `IMG_API_KEY` or the full content of sensitive inputs/prompts unless absolutely necessary for debugging in a secure environment and with appropriate redaction. Generated code/tests might be logged at DEBUG level in workspaces but should not typically be in aggregated remote logs due to verbosity and potential IP concerns. Failure reports (`.ironclad_failures.json`) are distinct from logs and are structured artifacts.
+
+**Metrics Collection Strategy:**
+
+*   Collect key metrics to track system performance and health.
+*   **Tools:** Use a metrics library within the Node.js application (e.g., Prometheus client library) to expose metrics, or simply emit metrics as structured log events that a logging system can parse. In CI/CD, these metrics can be collected by the CI platform or pushed to a time-series database (e.g., Prometheus, InfluxDB, CloudWatch Metrics, Datadog Metrics).
+*   **Key Metrics to Track:**
+    *   `ironclad_build_total_runs_count`: Counter for total `generate run` executions.
+    *   `ironclad_build_success_count`: Counter for successful runs.
+    *   `ironclad_build_failure_count`: Counter for failed runs.
+    *   `ironclad_build_duration_seconds`: Histogram/Summary of total `generate run` duration.
+    *   `ironclad_module_total_generation_attempts_count`: Counter for total IMG/validation attempts across all jobs.
+    *   `ironclad_module_successful_generation_count`: Counter for modules successfully generated (passed validation).
+    *   `ironclad_module_permanent_failure_count`: Counter for modules that failed after all retries.
+    *   `ironclad_job_duration_seconds`: Histogram/Summary of individual Job durations (from spawn to exit).
+    *   `ironclad_validation_step_duration_seconds`: Histogram/Summary per validation step type (tsc, dsl, test runner, etc.), tagged by `validation_step` and `module`.
+    *   `ironclad_validation_step_failure_count`: Counter for failures at each validation step, tagged by `validation_step` and `module`.
+    *   `ironclad_img_api_call_count`: Counter for total calls to the IMG API.
+    *   `ironclad_img_api_error_count`: Counter for errors received from the IMG API (tagged by status code).
+    *   Resource utilization metrics for the Task Runner process and Job processes (CPU, memory, disk I/O) collected by the execution environment.
+
+**Observability:**
+
+*   **Distributed Tracing:** Not directly applicable to this pipeline architecture as it's a sequence of distinct process invocations rather than requests flowing through interconnected services.
+*   **Dashboards:** Create dashboards using metrics and logs in a centralized observability platform.
+    *   Overall build success/failure rates.
+    *   Average build duration and identification of slow trends.
+    *   Breakdown of failures by validation step and module.
+    *   Distribution of Job attempt counts (see how often retries are needed).
+    *   Resource usage trends over time.
+*   **Alerting:** Set up alerts based on critical metrics:
+    *   High `ironclad_build_failure_count` rate.
+    *   Significant increase in `ironclad_module_permanent_failure_count`.
+    *   Increase in IMG API error rate.
+    *   Build duration exceeding a threshold.
+    *   Excessive resource utilization on build agents.
+*   **Incident Response:** When a build fails, the CI/CD platform should provide immediate access to the logs and the `.ironclad_failures.json` artifact. Developers/Engineers use these to diagnose the root cause, identifying whether the failure was due to:
+    *   An issue with the Ironclad tool itself.
+    *   An invalid input specification/contract.
+    *   A limitation or error in the IMG output.
+    *   A problem with the validation rules or engines.
+    *   An environmental issue (resource limits, network).
+
+This comprehensive approach to logging, metrics, and dashboards provides deep insight into the health and performance of the Ironclad system, enabling proactive identification and resolution of issues during the automated code generation process.
+
+## 12. Testing Strategy
+
+A comprehensive testing strategy is essential to ensure the reliability, correctness, and security of the Ironclad Code Generation System itself and to verify that it consistently produces high-quality, valid code according to the specifications.
+
+**Testing the Ironclad System (IBA, Task Runner, Jobs, Validation Orchestration):**
+
+1.  **Unit Tests:**
+    *   **Scope:** Individual functions or small groups of functions within the IBA, Task Runner, and Job logic.
+    *   **Focus:** Testing business logic independent of external dependencies or file system interactions (where possible). E.g., DAG cycle detection algorithm, prompt construction logic, retry loop state transitions, failure report parsing/collation.
+    *   **Tools:** Standard unit testing frameworks (Jest, Mocha, Vitest). Mocking frameworks for isolating components.
+    *   **Code Coverage:** Aim for high code coverage (e.g., >80%) for critical logic paths.
+2.  **Integration Tests:**
+    *   **Scope:** Testing the interaction between different components of the Ironclad system and with external dependencies (mocked).
+    *   **Focus:**
+        *   IBA interacting with the file system (reading inputs, writing outputs).
+        *   Task Runner discovering modules, preparing workspaces, spawning *mocked* Jobs.
+        *   Task Runner aggregating results from *mocked* Jobs.
+        *   Job orchestrating *mocked* IMG calls and *mocked* Validation Engine calls.
+        *   Testing the logic of collating `final_failure.json` into `.ironclad_failures.json`.
+    *   **Tools:** Jest, Mocha, test runners capable of mocking file system operations and child process spawning.
+3.  **Component Tests:**
+    *   **Scope:** Testing the Validation Engines in isolation or integrated with the code they execute against.
+    *   **Focus:**
+        *   Testing the TypeScript compiler (`tsc`) invocation logic and error parsing.
+        *   Testing the DSL validator implementation against various valid and invalid code snippets based on the `validation_dsl_spec`.
+        *   Testing the test runner invocation logic and result parsing.
+        *   Testing the edge case string check logic.
+    *   **Tools:** Dedicated test suites for each validation engine, potentially involving running the actual external tools (`tsc`, `jest`, custom scripts) in a controlled environment and verifying their output.
+4.  **End-to-End Tests:**
+    *   **Scope:** Running the complete Ironclad pipeline (`ironclad blueprint build` followed by `ironclad generate run`) with realistic sample inputs.
+    *   **Focus:** Verifying that the system correctly processes inputs, interacts with a *mocked* IMG, runs validations, produces correct outputs (generated code, failure reports), and exits with the correct status code. Test both success paths (all modules generate correctly) and failure paths (some modules fail, `.ironclad_failures.json` is generated).
+    *   **Tools:** Scripting languages, shell scripts, or a testing framework capable of executing external processes and asserting on file system state and process exit codes. Use a *mock* IMG service to control the LLM output predictably for testing purposes.
+5.  **Performance/Load Tests:**
+    *   **Scope:** Testing the system's performance under varying load conditions.
+    *   **Focus:**
+        *   Measure execution time with increasing numbers of modules.
+        *   Measure execution time with varying `IRONCLAD_MAX_PARALLEL` settings.
+        *   Monitor CPU, memory, and disk usage during runs.
+        *   Test the system's behavior with large input files or code outputs.
+    *   **Tools:** Benchmarking tools, system monitoring tools.
+6.  **Security Penetration Tests:**
+    *   **Scope:** Probing the Ironclad system for vulnerabilities.
+    *   **Focus:**
+        *   Attempting prompt injection via crafted input files.
+        *   Testing file system access controls and workspace isolation.
+        *   Verifying secure handling of the `IMG_API_KEY`.
+        *   Scanning the Ironclad tool's code and dependencies for known vulnerabilities.
+    *   **Tools:** Standard security scanning tools (SAST, DAST if applicable), manual security review.
+
+**Testing the Generated Code:**
+
+While the Ironclad system is responsible for *generating* tests (`*.test.ts`), it's crucial to have a strategy for ensuring the *quality* and *sufficiency* of these generated tests and the generated code itself.
+
+1.  **Generated Unit Test Execution (by Job):** The Job process MUST execute the generated unit tests as part of its validation loop. This verifies that the generated code passes the tests *the LLM itself created*.
+2.  **Global Integration Tests (by Task Runner):** The Task Runner MUST run integration tests defined separately (not generated by the LLM) on the *entire* merged codebase. These tests verify the interaction between modules and the system's overall functionality, acting as a higher-level check that the sum of the parts works correctly.
+3.  **Manual Code Review:** Developers MUST review the generated code, especially in the initial phases, to assess its quality, efficiency, readability, and adherence to implicit standards not captured by automated validation.
+4.  **Manual Test Review:** Developers MUST review the generated tests to ensure they provide adequate coverage, are meaningful, and test the module's behavior effectively. The `edgeCases` check in contracts is a basic way to guide LLM test generation quality.
+5.  **Acceptance Testing (UAT):** For critical modules, manual or automated acceptance tests may be performed on the integrated system using the generated code.
+
+**Tools and Frameworks:**
+
+*   **Testing Frameworks:** Jest, Mocha, Vitest for unit/integration tests.
+*   **Mocking:** Libraries compatible with the chosen test framework. `mock-fs` or similar for file system mocking.
+*   **Validation Tools:** `tsc`, specific DSL validator executables/libraries, test runners (`jest`, `mocha`), linters (`eslint`, `prettier`), security linters (`semgrep`).
+*   **CI/CD Platforms:** To automate test execution on every commit.
+*   **Code Coverage Tools:** `nyc`, built into Jest/Vitest.
+*   **Static Analysis:** SonarQube, Semgrep, ESLint.
+
+**Code Coverage Targets:**
+
+*   **Ironclad Tool Codebase:** Aim for high unit test code coverage (>80%) for core logic.
+*   **Generated Code:** Code coverage targets for the *generated* code should be defined based on project standards. While the LLM generates tests, manually ensuring critical paths are covered and setting coverage gates is good practice. The generated tests executed by the Job should ideally meet a minimum coverage target defined in the DSL spec or configuration.
+
+This multi-layered testing strategy, combining tests *of* the tool with tests *of* the generated code, provides confidence in both the generation process and its outputs.
+
+## 13. Future Enhancements and Technical Debt Roadmap
+
+The current architecture provides a solid foundation for automated code generation. As the system matures and requirements evolve, several areas are ripe for enhancement. Additionally, certain design choices might incur technical debt that requires future refactoring.
+
+**Potential Future Enhancements:**
+
+1.  **Support for Multiple Languages:** Extend the system to generate code in languages other than TypeScript (e.g., Python, Java, Go, Rust). This would require:
+    *   Language-specific IDL formats or transformations.
+    *   Language-specific interface stub generation.
+    *   Language-specific prompt templates.
+    *   Integration of language-specific validation tools (compilers, linters, test runners, static analyzers).
+    *   Updating the Job logic to handle different tool invocations.
+2.  **Enhanced DSL Validation Engine:** Develop a more sophisticated and flexible DSL validation engine.
+    *   Support for richer rule definitions (AST-based analysis, control flow analysis).
+    *   A dedicated language or configuration format for the DSL rules, possibly compiled for performance.
+    *   Easier integration of custom or third-party validation checks.
+3.  **LLM Response Caching:** Implement a caching layer for IMG responses based on the prompt hash (`prompt.hash`).
+    *   Requires a persistent cache store (e.g., file system, Redis).
+    *   Careful invalidation strategy (e.g., cache expires, cache invalidated if IMG_API_URL/version changes, manual invalidation).
+    *   Mechanism to bypass the cache for specific runs or modules.
+4.  **Interactive Failure Debugging:** Develop tooling to assist developers in debugging generation failures.
+    *   A CLI command to recreate a Job's workspace for local inspection and re-running validation steps manually.
+    *   Providing more context in the failure reports (e.g., relevant snippet of the prompt, specific lines of generated code causing validation errors).
+5.  **Generation of Other Artifacts:** Extend the system to generate documentation (e.g., JSDoc, OpenAPI specs from contracts/code), API gateway configurations, deployment manifests (Kubernetes YAML, Dockerfiles), or configuration files based on the architectural specifications.
+6.  **Improved Prompt Templating:** Move to a more powerful and maintainable templating engine with features like partials, helpers, and better error handling.
+7.  **Dependency Management Generation:** Explore generating dependency declarations (e.g., `package.json` entries) based on the module dependency graph, although this is complex due to versioning conflicts.
+8.  **Optimized Workspace Preparation:** For very large repositories, optimize workspace creation using advanced file system techniques (copy-on-write snapshots if available) or more sophisticated symlinking strategies.
+
+**Technical Debt Roadmap:**
+
+1.  **Initial DSL Validator Implementation:** The initial DSL validator might be a simple script performing regex checks or basic string matching.
+    *   **Debt:** Limited rule complexity, prone to false positives/negatives, hard to maintain.
+    *   **Resolution:** Refactor into a robust AST-based validator (Phase 2/3 Enhancement).
+2.  **Prompt Template Management:** Using simple text files with a basic templating syntax.
+    *   **Debt:** Can become unwieldy for complex prompts, limited logic in templates.
+    *   **Resolution:** Migrate to a more powerful templating engine (Phase 1/2 Enhancement).
+3.  **Workspace Cleanup Robustness:** Ensuring temporary workspaces are *always* cleaned up, even after unexpected process termination.
+    *   **Debt:** Could lead to disk space exhaustion over time.
+    *   **Resolution:** Implement cleanup using `try...finally` blocks, process exit handlers, or an external cleanup utility that runs periodically.
+4.  **Error Reporting Consistency:** Ensuring all validation engines and internal components report errors in a uniform, machine-readable format for easy aggregation.
+    *   **Debt:** Inconsistent formats make parsing `failures.json` difficult.
+    *   **Resolution:** Define a strict error reporting schema and ensure all components adhere to it.
+
+**High-Level Phased Roadmap (Conceptual):**
+
+*   **Phase 1 (Core Functionality - Current):** Implement the core IBA and Task Runner protocol as specified, focusing on TypeScript generation, basic validation (tsc, test execution, simple DSL/edge case), and robust failure reporting.
+*   **Phase 2 (Validation & Usability):** Enhance validation capabilities (more powerful DSL, better linters, security checks). Improve CLI output and failure reporting readability. Implement workspace recreation for debugging.
+*   **Phase 3 (Extensibility & Performance):** Explore support for a second language. Implement LLM response caching. Optimize file operations. Refactor core validation engine.
+*   **Phase 4 (Broader Generation):** Add capabilities to generate documentation, deployment manifests, or other project artifacts.
+
+This roadmap allows for incremental development, delivering core value first while planning for future growth, robustness, and broader applicability.
+
+## 14. Non-Functional Requirements (NFRs) Summary
+
+This section summarizes the key non-functional requirements that govern the quality attributes of the Ironclad Code Generation System.
+
+*   **Reliability:**
+    *   **Deterministic Output:** Given the same inputs (including the specific IMG version/state), the system SHALL produce byte-for-byte identical outputs (generated code, failure reports, exit code). This is a cornerstone requirement.
+    *   **Consistent Failure Reporting:** When failures occur, the system SHALL produce a structured, machine-readable report (`.ironclad_failures.json`) that accurately reflects the validation errors encountered.
+    *   **Fault Isolation:** Failure during the generation/validation of one module SHALL NOT prevent the successful generation/validation of other independent modules or crash the entire Task Runner process.
+    *   **Retry Mechanism:** The system SHALL attempt LLM invocation and validation up to 3 times per module Job to mitigate transient failures.
+    *   **MTBF (Mean Time Between Failures):** While not a continuous service, the tooling itself should be stable. Aim for a high MTBF for the core Task Runner process during a run, minimizing crashes of the tool itself.
+    *   **MTTR (Mean Time To Recover):** Failures in individual module Jobs are reported immediately. Recovery involves developer action based on the failure report. The tool's design supports rapid diagnosis via detailed logging and the `.ironclad_failures.json` artifact.
+
+*   **Availability:**
+    *   The system's availability is tied to the availability of the build environment (CI/CD runner) and the external IMG API. It is not a 24/7 service.
+    *   The system SHALL gracefully handle unavailable or slow IMG APIs (via retries and timeouts), although persistent unavailability will cause the build to fail.
+
+*   **Performance:**
+    *   **Throughput:** The system SHALL be able to process N modules within T time, where T is reasonably linear with N for N > `IRONCLAD_MAX_PARALLEL`, assuming sufficient resources and a responsive IMG API. Target: Generate and validate 100 modules (average complexity) within 15 minutes on a standard build agent with `IRONCLAD_MAX_PARALLEL` appropriately configured.
+    *   **Latency (per Job):** The average time for a single module Job (including retries if needed) SHALL be minimized. Target: Average Job completion time < 2 minutes.
+    *   **Resource Utilization:** The system SHALL operate within reasonable CPU, memory, and disk limits for a build process on the target CI environment. Memory usage per Job SHALL be constrained.
+
+*   **Scalability:**
+    *   The system SHALL support scaling generation throughput by increasing the `IRONCLAD_MAX_PARALLEL` setting, up to the limits of the execution environment and external IMG API.
+    *   The architecture SHALL remain viable for projects with hundreds or thousands of modules, although execution time will increase proportionally to the number of modules and the `IRONCLAD_MAX_PARALLEL` setting.
+
+*   **Maintainability:**
+    *   The codebase for the Ironclad tooling SHALL adhere to standard coding practices (e.g., ESLint, Prettier) and include comprehensive documentation (code comments, architectural diagrams).
+    *   Components SHALL have clear responsibilities and well-defined interfaces to minimize coupling.
+    *   The system's configuration and input files SHALL be well-structured and documented.
+
+*   **Extensibility:**
+    *   It SHALL be possible to integrate new validation rules into the DSL validation process without modifying core Task Runner logic.
+    *   It SHALL be possible to modify or add prompt templates to guide the LLM for different module types or requirements.
+    *   The architecture SHOULD allow for the addition of support for generating code in new programming languages in future phases with isolated component changes.
+
+*   **Auditability:**
+    *   The system SHALL produce logs detailing the execution flow, including Job spawning, attempts, and validation results.
+    *   The `.ironclad_failures.json` file provides a record of all generation failures for a specific run.
+    *   The BlueprintLock headers provide cryptographic verification of the integrity of core architectural input files.
+    *   The generated code itself, when checked into version control, provides an audit trail of the output.
+
+*   **Security:**
+    *   The system SHALL prevent prompt injection attempts from compromising the integrity of the generation process or output code, primarily through rigorous input validation and output validation.
+    *   The system SHALL handle sensitive credentials (IMG API key) securely, relying on environment variables or dedicated secret management.
+    *   Generated code SHALL be subjected to static analysis and security linting as part of the validation process.
+    *   Jobs SHALL be executed in isolated environments to limit the impact of malicious or faulty generated code during the validation phase.
+
+*   **Compliance:**
+    *   The Ironclad tool itself doesn't typically require compliance like GDPR or HIPAA unless the *inputs* or *generated code* contain sensitive data, which is outside the scope of the tool's core function but must be considered in its *usage*. The tool's secure handling of input data and secrets contributes to overall system compliance where applicable.
+    *   The generated code should pass checks defined in the `validation_dsl_spec.md`, which can include compliance-related rules (e.g., logging formats required for audit trails, specific data handling patterns).
+
+These NFRs define the necessary qualities the Ironclad system must possess to be a reliable, performant, and trustworthy part of the software development lifecycle.
+
+## 15. Glossary and Definitions
+
+This glossary defines key terms, acronyms, and architectural concepts used throughout this document to ensure a shared understanding.
+
+*   **ARCHITECTURE_SPEC:** The primary Markdown file that defines the overall structure and modules of the system to be generated.
+*   **BlueprintLock:** A header (e.g., `BlueprintLock: sha256:<hash>`) added by the IBA to files it generates or copies into the repository, used for verifying file integrity. The hash is a SHA-256 checksum of the file's content, including the final header line itself.
+*   **Contracts (Module Contracts):** JSON files (`contracts/*.json`) formally defining the interface, dependencies, and generation instructions for individual modules.
+*   **DAG (Directed Acyclic Graph):** A graph data structure where nodes are connected by directed edges (dependencies) and contain no cycles. The module dependency graph must be a DAG.
+*   **Deterministic:** A process or system is deterministic if, given the same input, it always produces the same output. A core goal of the Ironclad system.
+*   **DSL (Domain Specific Language):** A small language or format used to define specific rules or configurations. `validation_dsl_spec.md` uses a DSL to define code validation rules.
+*   **IBA (Ironclad Blueprint Architect):** The initial process that reads the `ARCHITECTURE_SPEC` and related files, validates the input, and scaffolds the initial repository structure including interface stubs and BlueprintLocks.
+*   **IDL (Interface Definition Language):** Files (`idl/*.ts`) defining shared data types and interfaces used across modules and contracts.
+*   **IMG (Ironclad Module Generator):** The external Large Language Model (LLM) invocation responsible for generating the implementation and test code for a single module based on a prompt. Treated as an external service via an API.
+*   **Independently:** Describes a Job operating with no read or write dependency on any files generated by another concurrent Job, except for the initial shared input files in the workspace.
+*   **Interface Stub:** A TypeScript interface file (`src/modules/I<ModuleName>.ts`) generated by the IBA, representing the public contract of a module for type checking.
+*   **Job:** A single, isolated operating-system process spawned by the Task Runner to handle the full lifecycle (IMG invocation, validation, retries) for exactly one Module-Generation Task.
+*   **LLM (Large Language Model):** The type of AI model used by the IMG to generate code.
+*   **Module-Generation Task:** A single, isolated unit of work performed by a Job, involving invoking the IMG and validating the output for one specific module.
+*   **NFRs (Non-Functional Requirements):** Quality attributes of the system such as performance, scalability, reliability, security, and maintainability, as opposed to functional behavior.
+*   **Parallel:** Multiple Jobs executing concurrently in time, with their start and end times overlapping, limited by `IRONCLAD_MAX_PARALLEL`.
+*   **Prompt Amendment:** The process within a Job's retry loop where details of previous validation failures are added to the prompt before re-invoking the IMG.
+*   **Prompt Template:** A file (`prompt_templates/*.tmpl`) containing a template used by the Task Runner to construct the `prompt.txt` for the IMG.
+*   **Repository:** The file system directory containing all input specifications, generated code, and output reports for a specific project using the Ironclad system. Managed via Git.
+*   **Spawn:** To create a completely separate operating-system process, container, or cloud function invocation for executing a Job.
+*   **System Context:** A JSON file (`system_context.json`) providing global information and context relevant to the generation of all modules.
+*   **Task Runner:** The main orchestration process that discovers modules, prepares workspaces, manages concurrency, spawns Jobs, awaits their completion, aggregates results, and performs global validation.
+*   **Task Workspace:** A temporary, isolated directory (`.tmp/ironclad_tasks/<ModuleName>/`) created by the Task Runner for a single Job to operate within. Contains only the files necessary for that specific module's task.
+*   **Validation:** The deterministic, automated sequence of checks performed by a Job on generated code, including static type-checking, DSL-rule validation, linter checks, edge case string checks, and execution of the generated test file.
+
+This glossary serves as a quick reference for understanding the terminology used within this architectural document and the Ironclad system specification.
+
+A.1 Component & Sequence Diagrams (non-normative)
+mermaid
+Copy
+Edit
+flowchart TD
+    subgraph Control-Plane
+        IBA[Ironclad Blueprint Architect]
+        TR[Task Runner]
+    end
+    subgraph N(x) Module-Jobs
+        Job1[Job::<Module>]
+        JobN[…]
+    end
+
+    IBA -->|Blueprint skeleton| TR
+    TR -->|spawn| Job1
+    TR -->|spawn| JobN
+    Job1 -->|impl+tests| TR
+    JobN --> TR
+mermaid
+Copy
+Edit
+sequenceDiagram
+    autonumber
+    participant TR as Task-Runner
+    participant Job as Module-Job
+    participant IMG as LLM (IMG)
+
+    TR->>Job: spawn()
+    Job->>IMG: prompt.txt (attempt 1)
+    IMG-->>Job: JSON {impl, tests}
+    Job->>Job: validate ➜ ❌
+    loop up to 3 attempts
+        Job->>IMG: amended prompt (includes LAST_ERROR)
+        IMG-->>Job: new JSON
+        Job->>Job: validate
+    end
+    Job-->>TR: success ✓ or final_failure.json
+A.2 Canonical JSON Schemas & Examples
+<details><summary>contracts/<ModuleName>.json</summary>
+jsonc
+Copy
+Edit
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModuleContract",
+  "type": "object",
+  "required": ["name","purpose","publicAPI","dependencies","constructorParams"],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]+$" },
+    "purpose": { "type": "string", "minLength": 10 },
+    "functionSignatures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name","parameters","returnType"],
+        "properties": {
+          "name": { "type": "string" },
+          "parameters": { "type": "array", "items": {"$ref":"#/definitions/param"} },
+          "returnType": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "dataStructures":   { "type": "array", "items": {"$ref":"#/definitions/dataStruct"} },
+    "publicAPI":        { "type": "array", "items": { "type": "string" } },
+    "dependencies":     { "type": "array", "items": { "type": "string" } },
+    "constructorParams":{ "type": "array", "items": { "type": "string" } },
+    "instructions": {
+      "type": "object",
+      "properties": {
+        "overview":   { "type": "string" },
+        "steps":      { "type": "array", "items": { "type": "string" } },
+        "edgeCases":  { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "definitions": {
+    "param":      { "type":"object","properties":{"name":{"type":"string"},"type":{"type":"string"}}},
+    "dataStruct": { "type":"object","properties":{"name":{"type":"string"},"properties":{"type":"array","items":{"$ref":"#/definitions/param"}}}}
+  }
+}
+Minimal example:
+
+json
+Copy
+Edit
+{
+  "name": "UserService",
+  "purpose": "Business-logic façade for user CRUD and profile enrichment.",
+  "publicAPI": ["createUser","getById"],
+  "dependencies": ["EmailAdapter"],
+  "constructorParams": ["EmailAdapter"],
+  "functionSignatures": [
+    { "name":"createUser", "parameters":[{"name":"dto","type":"CreateUserDTO"}], "returnType":"User" },
+    { "name":"getById",    "parameters":[{"name":"id","type":"string"}],      "returnType":"User" }
+  ],
+  "instructions": {
+    "overview": "Send welcome-mail after persisting user.",
+    "steps": [
+      "Validate DTO",
+      "Hash password with bcrypt-12",
+      "Persist record",
+      "Invoke EmailAdapter.sendWelcome"
+    ],
+    "edgeCases": ["email already exists","db timeout > 1s"]
+  }
+}
+</details> <details><summary>final_failure.json</summary>
+json
+Copy
+Edit
+{
+  "module": "UserService",
+  "attempts": 3,
+  "lastPromptHash": "sha256:ab12…",
+  "errorSummary": "Edge-case 'db timeout > 1s' not covered in tests."
+}
+</details>
+A.3 Prompt-Template Reference (prompt_templates/module_prompt.tmpl)
+text
+Copy
+Edit
+### DO NOT EDIT ABOVE THIS LINE – auto-generated ###
+Module: {{ contract.name }}
+
+<CONTRACT_JSON>
+{{ contract | toJsonPretty }}
+</CONTRACT_JSON>
+
+<IDL_SNIPPETS>
+{{ idlSnippets }}
+</IDL_SNIPPETS>
+
+<SYSTEM_CONTEXT>
+{{ systemContext | toJsonPretty }}
+</SYSTEM_CONTEXT>
+
+{{#if previousFailure}}
+===LAST_ERROR===
+{{ previousFailure | toJsonPretty }}
+{{/if}}
+
+### REQUIRED_OUTPUT
+Respond with EXACT JSON:
+{
+  "implementationCode": "string",
+  "testCode": "string"
+}
+A.4 Environment-Variable Contract
+Var	Default	Secret	Description
+IMG_API_KEY	—	✅	API key for the LLM provider.
+IRONCLAD_MAX_PARALLEL	4	❌	Max concurrent Jobs.
+TS_NODE_TRANSPILE_ONLY	1	❌	Speeds up jest runs during validation.
+
+A.5 Concurrency Sizing Formula
+bash
+Copy
+Edit
+maxJobs = min(
+  cpuCores / 1,                 # ~1 core per Job
+  availMemGB / 2,               # ~2 GB per Job incl. LLM call
+  providerQPS / callsPerJob,    # respect API quotas
+  IRONCLAD_MAX_PARALLEL env
+)
+A.6 Exit-Code Taxonomy
+Code	Meaning
+0	All modules built & global checks passed.
+65	Attempt to overwrite existing src file (EX_DATAERR).
+100	At least one final_failure.json present.
+101	Global type-check failed.
+102	DSL or lint validation failed.
+130	Interrupted via SIGINT/SIGTERM.
+
+A.7 Sample Interface Stub & IDL
+IDL (idl/user_service.idl)
+
+pgsql
+Copy
+Edit
+service UserService {
+  rpc Create(CreateUserDTO) returns User;
+  rpc GetById(string id)    returns User;
+}
+Generated stub (src/modules/IUserService.ts)
+
+ts
+Copy
+Edit
+export interface IUserService {
+  createUser(dto: CreateUserDTO): Promise<User>;
+  getById(id: string): Promise<User>;
+}
+A.8 BlueprintLock Verification Snippet
+bash
+Copy
+Edit
+#!/usr/bin/env bash
+set -euo pipefail
+file="$1"
+expected=$(grep -Eo 'BlueprintLock: sha256:[a-f0-9]+' "$file" | cut -d: -f3)
+actual=$(sha256sum "$file" | awk '{print $1}')
+if [[ "$expected" != "$actual" ]]; then
+  echo "Lock mismatch for $file" >&2
+  exit 1
+fi
+
+
+---
+
+## 🔧 Appendix A — Remaining Specification Gaps
+
+### A.1 Component & Sequence Diagrams  *(non-normative)*
+
+```mermaid
+flowchart TD
+    subgraph Control-Plane
+        IBA[Ironclad Blueprint Architect]
+        TR[Task Runner]
+    end
+    subgraph N(x) Module-Jobs
+        Job1[Job::<Module>]
+        JobN[…]
+    end
+
+    IBA -->|Blueprint skeleton| TR
+    TR -->|spawn| Job1
+    TR -->|spawn| JobN
+    Job1 -->|impl+tests| TR
+    JobN --> TR
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant TR as Task-Runner
+    participant Job as Module-Job
+    participant IMG as LLM (IMG)
+
+    TR->>Job: spawn()
+    Job->>IMG: prompt.txt (attempt 1)
+    IMG-->>Job: JSON {impl, tests}
+    Job->>Job: validate ➜ ❌
+    loop up to 3 attempts
+        Job->>IMG: amended prompt (includes LAST_ERROR)
+        IMG-->>Job: new JSON
+        Job->>Job: validate
+    end
+    Job-->>TR: success ✓ or final_failure.json
+```
+
+---
+
+### A.2 Canonical JSON Schemas & Examples
+
+<details><summary>contracts/<ModuleName>.json</summary>
+
+```jsonc
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModuleContract",
+  "type": "object",
+  "required": ["name","purpose","publicAPI","dependencies","constructorParams"],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]+$" },
+    "purpose": { "type": "string", "minLength": 10 },
+    "functionSignatures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name","parameters","returnType"],
+        "properties": {
+          "name": { "type": "string" },
+          "parameters": { "type": "array", "items": {"$ref":"#/definitions/param"} },
+          "returnType": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "dataStructures":   { "type": "array", "items": {"$ref":"#/definitions/dataStruct"} },
+    "publicAPI":        { "type": "array", "items": { "type": "string" } },
+    "dependencies":     { "type": "array", "items": { "type": "string" } },
+    "constructorParams":{ "type": "array", "items": { "type": "string" } },
+    "instructions": {
+      "type": "object",
+      "properties": {
+        "overview":   { "type": "string" },
+        "steps":      { "type": "array", "items": { "type": "string" } },
+        "edgeCases":  { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "definitions": {
+    "param":      { "type":"object","properties":{"name":{"type":"string"},"type":{"type":"string"}}},
+    "dataStruct": { "type":"object","properties":{"name":{"type":"string"},"properties":{"type":"array","items":{"$ref":"#/definitions/param"}}}}
+  }
+}
+```
+
+Minimal example:
+
+```json
+{
+  "name": "UserService",
+  "purpose": "Business-logic façade for user CRUD and profile enrichment.",
+  "publicAPI": ["createUser","getById"],
+  "dependencies": ["EmailAdapter"],
+  "constructorParams": ["EmailAdapter"],
+  "functionSignatures": [
+    { "name":"createUser", "parameters":[{"name":"dto","type":"CreateUserDTO"}], "returnType":"User" },
+    { "name":"getById",    "parameters":[{"name":"id","type":"string"}],      "returnType":"User" }
+  ],
+  "instructions": {
+    "overview": "Send welcome-mail after persisting user.",
+    "steps": [
+      "Validate DTO",
+      "Hash password with bcrypt-12",
+      "Persist record",
+      "Invoke EmailAdapter.sendWelcome"
+    ],
+    "edgeCases": ["email already exists","db timeout > 1s"]
+  }
+}
+```
+
+</details>
+
+<details><summary>final_failure.json</summary>
+
+```json
+{
+  "module": "UserService",
+  "attempts": 3,
+  "lastPromptHash": "sha256:ab12…",
+  "errorSummary": "Edge-case 'db timeout > 1s' not covered in tests."
+}
+```
+
+</details>
+
+---
+
+### A.3 Prompt-Template Reference (`prompt_templates/module_prompt.tmpl`)
+
+```text
+### DO NOT EDIT ABOVE THIS LINE – auto-generated ###
+Module: {{ contract.name }}
+
+<CONTRACT_JSON>
+{{ contract | toJsonPretty }}
+</CONTRACT_JSON>
+
+<IDL_SNIPPETS>
+{{ idlSnippets }}
+</IDL_SNIPPETS>
+
+<SYSTEM_CONTEXT>
+{{ systemContext | toJsonPretty }}
+</SYSTEM_CONTEXT>
+
+{{#if previousFailure}}
+===LAST_ERROR===
+{{ previousFailure | toJsonPretty }}
+{{/if}}
+
+### REQUIRED_OUTPUT
+Respond with EXACT JSON:
+{
+  "implementationCode": "string",
+  "testCode": "string"
+}
+```
+
+---
+
+### A.4 Environment-Variable Contract
+
+| Var                      | Default | Secret | Description                            |
+| ------------------------ | ------- | ------ | -------------------------------------- |
+| `IMG_API_KEY`            | —       | ✅      | API key for the LLM provider.          |
+| `IRONCLAD_MAX_PARALLEL`  | `4`     | ❌      | Max concurrent Jobs.                   |
+| `TS_NODE_TRANSPILE_ONLY` | `1`     | ❌      | Speeds up jest runs during validation. |
+
+---
+
+### A.5 Concurrency Sizing Formula
+
+```
+maxJobs = min(
+  cpuCores / 1,                 # ~1 core per Job
+  availMemGB / 2,               # ~2 GB per Job incl. LLM call
+  providerQPS / callsPerJob,    # respect API quotas
+  IRONCLAD_MAX_PARALLEL env
+)
+```
+
+---
+
+### A.6 Exit-Code Taxonomy
+
+| Code  | Meaning                                               |
+| ----- | ----------------------------------------------------- |
+| `0`   | All modules built & global checks passed.             |
+| `65`  | Attempt to overwrite existing src file (EX\_DATAERR). |
+| `100` | At least one `final_failure.json` present.            |
+| `101` | Global type-check failed.                             |
+| `102` | DSL or lint validation failed.                        |
+| `130` | Interrupted via SIGINT/SIGTERM.                       |
+
+---
+
+### A.7 Sample Interface Stub & IDL
+
+*IDL (`idl/user_service.idl`)*
+
+```
+service UserService {
+  rpc Create(CreateUserDTO) returns User;
+  rpc GetById(string id)    returns User;
+}
+```
+
+*Generated stub (`src/modules/IUserService.ts`)*
+
+```ts
+export interface IUserService {
+  createUser(dto: CreateUserDTO): Promise<User>;
+  getById(id: string): Promise<User>;
+}
+```
+
+---
+
+### A.8 BlueprintLock Verification Snippet
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+file="$1"
+expected=$(grep -Eo 'BlueprintLock: sha256:[a-f0-9]+' "$file" | cut -d: -f3)
+actual=$(sha256sum "$file" | awk '{print $1}')
+if [[ "$expected" != "$actual" ]]; then
+  echo "Lock mismatch for $file" >&2
+  exit 1
+fi
+```

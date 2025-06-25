@@ -1,0 +1,27 @@
+{
+  "Phase 1: Requirement Analysis and Specification Generation Agent": {
+    "Task 1.1: Define and establish the project's core constitution and guiding principles to resolve the 'PROMPT_NOT_FOUND' error.": [],
+    "Task 1.2: Define the formal schema for both the input user requirements and the output machine-readable specification document (e.g., using JSON Schema or OpenAPI).": [],
+    "Task 1.3: Design the architecture of the specification generation agent, outlining its internal components (e.g., parser, clarifier, decomposer, tech stack selector).": [],
+    "Task 1.4: Implement a natural language processing module to parse and interpret the initial high-level user requirement.": [],
+    "Task 1.5: Develop a mechanism for the agent to identify ambiguities in the requirement and generate clarifying questions.": [],
+    "Task 1.6: Implement the core logic to decompose the clarified requirement into detailed components, including user stories, functional requirements, and non-functional requirements.": [],
+    "Task 1.7: Create modules to propose a technology stack, a high-level system architecture, and preliminary data models based on the decomposed requirements.": [],
+    "Task 1.8: Implement a final assembler to compile all generated components into a single, structured, and validated specification document according to the defined schema.": []
+  },
+  "Phase 2: Project Scaffolding and Code Generation Agent": {
+    "Task 2.1: Define the detailed technical specification schema that will serve as the input for the code generation agent.": [],
+    "Task 2.2: Implement a project scaffolding engine to create the basic directory structure, build configurations (e.g., package.json, pom.xml), and boilerplate files based on the tech spec.": [],
+    "Task 2.3: Develop the core code generation module that translates individual components from the tech spec (e.g., a function, a class, a UI component) into source code using an LLM.": [],
+    "Task 2.4: Create an orchestrator to manage the overall code generation workflow, iterating through the tech spec and invoking the code generation module for each component.": [],
+    "Task 2.5: Implement a file system management utility for the agent to write, update, and organize the generated code files within the scaffolded project structure.": [],
+    "Task 2.6: Integrate a dependency detection and management mechanism to automatically populate package manager files (e.g., requirements.txt, package.json).": [],
+    "Task 2.7: Develop a code validation and self-correction loop that uses static analysis tools (linters) and build/compile checks to identify and attempt to fix errors in the generated code.": [],
+    "Task 2.8: Design and implement the agent's API for receiving the technical specification and returning the path to the generated project or an error state.": [],
+    "Task 2.9: Set up a testing framework for the agent itself, with test cases for generating various simple projects (e.g., a basic REST API, a simple web app) to validate its functionality.": []
+  },
+  "Phase 3: Automated Test Generation and Verification Agent": {},
+  "Phase 4: Autonomous Debugging and Refinement Loop": {},
+  "Phase 5: Production Packaging and Deployment Configuration Agent": {},
+  "Phase 6: Core Orchestration Engine and End-to-End Integration": {}
+}

@@ -1,10 +1,10 @@
 Metadata-Version: 2.4
 Name: hierarchical_planner
 Version: 0.1.0
-Summary: A hierarchical task planner using Google's Gemini API
+Summary: A hierarchical task planner using LLM APIs
 Author: Justin Lietz
-Author-email: jlietz93@gmail.com
-Requires-Python: >=3.8
+Author-email: justin@neuroca.com
+Requires-Python: >=3.12
 Dynamic: author
 Dynamic: author-email
 Dynamic: requires-python

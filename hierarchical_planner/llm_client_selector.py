@@ -2,12 +2,12 @@ import logging
 from typing import Dict, Any, Optional
 
 # Import client functions
-from gemini_client import generate_structured_content as gemini_generate_structured_content
-from gemini_client import generate_content as gemini_generate_content
-from gemini_client import call_gemini_with_retry
-from anthropic_client import generate_structured_content as anthropic_generate_structured_content
-from anthropic_client import generate_content as anthropic_generate_content
-from anthropic_client import call_anthropic_with_retry
+from .gemini_client import generate_structured_content as gemini_generate_structured_content
+from .gemini_client import generate_content as gemini_generate_content
+from .gemini_client import call_gemini_with_retry
+from .anthropic_client import generate_structured_content as anthropic_generate_structured_content
+from .anthropic_client import generate_content as anthropic_generate_content
+from .anthropic_client import call_anthropic_with_retry
 
 logger = logging.getLogger(__name__)
 

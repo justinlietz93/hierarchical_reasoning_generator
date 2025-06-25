@@ -13,9 +13,9 @@ from typing import Dict, Any
 # from google.generativeai.types import generation_types 
 
 # Local imports for exceptions
-from exceptions import ApiKeyError, ApiCallError, ApiResponseError, ApiBlockedError, JsonParsingError, JsonProcessingError
+from .exceptions import ApiKeyError, ApiCallError, ApiResponseError, ApiBlockedError, JsonParsingError, JsonProcessingError
 # Import DeepSeek client for fallback
-import deepseek_v3_client
+from . import deepseek_v3_client
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -144,8 +144,9 @@ async def generate_content(prompt: str, config: Dict[str, Any]) -> str:
     """
     try:
         model = get_gemini_model(config)
+        request_options = {"timeout": 600}
         logger.debug(f"Sending prompt to Gemini model {model.model_name}:\n{prompt[:200]}...") # Log truncated prompt
-        response = await model.generate_content_async(prompt)
+        response = await model.generate_content_async(prompt, request_options=request_options)
 
         # More robust checking based on library structure
         if not response.candidates:

@@ -24,7 +24,7 @@ api:
   # API Key: Can be the key itself, an environment variable name (e.g., GEMINI_API_KEY),
   # or null/empty to rely solely on the environment variable.
   key: GEMINI_API_KEY
-  model_name: gemini-1.5-pro-latest # Default model for Gemini
+  model_name: gemini-2.5-pro # Default model for Gemini
   temperature: 0.6
   max_output_tokens: 8192
   retries: 3

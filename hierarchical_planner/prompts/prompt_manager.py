@@ -30,7 +30,7 @@ class PromptManager:
 
         logger.info(f"Loading prompts from: {abs_prompts_dir}")
         for filename in os.listdir(abs_prompts_dir):
-            if filename.endswith(".txt"):
+            if filename.endswith(".txt") and not filename.startswith("__"):
                 prompt_name = filename[:-4]  # Remove .txt extension
                 try:
                     with open(abs_prompts_dir / filename, 'r', encoding='utf-8') as f:

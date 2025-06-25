@@ -40,7 +40,6 @@ from .exceptions import (
     JsonSerializationError, ApiCallError, JsonProcessingError, ProjectBuilderError
 )
 from .project_builder import ProjectBuilder
-from .prompts.prompt_manager import PromptManager
 
 # --- Load Configuration ---
 try:
@@ -50,9 +49,6 @@ try:
     setup_logging(CONFIG) # Call the setup function HERE
     logger = logging.getLogger(__name__) # Get logger AFTER setup
     logger.info("Configuration loaded and logging configured successfully.")
-    # --- Load Prompts ---
-    prompt_manager = PromptManager(os.path.join(os.path.dirname(__file__), 'prompts'))
-    logger.info("Prompts loaded successfully.")
 except ConfigError as e:
     # Catch specific ConfigError from loader
     print(f"CRITICAL: Configuration error: {e}", file=sys.stderr)
@@ -64,11 +60,11 @@ except Exception as e:
 
 
 # --- Configuration (Now loaded from CONFIG) ---
-# Constants are no longer needed here
-CONSTITUTION_GENERATION_PROMPT = prompt_manager.get_prompt("CONSTITUTION_GENERATION_PROMPT")
-PHASE_GENERATION_PROMPT = prompt_manager.get_prompt("PHASE_GENERATION_PROMPT")
-TASK_GENERATION_PROMPT = prompt_manager.get_prompt("TASK_GENERATION_PROMPT")
-STEP_GENERATION_PROMPT = prompt_manager.get_prompt("STEP_GENERATION_PROMPT")
+# Import prompts directly from the .py files
+from .prompts.CONSTITUTION_GENERATION_PROMPT import CONSTITUTION_GENERATION_PROMPT
+from .prompts.PHASE_GENERATION_PROMPT import PHASE_GENERATION_PROMPT
+from .prompts.TASK_GENERATION_PROMPT import TASK_GENERATION_PROMPT
+from .prompts.STEP_GENERATION_PROMPT import STEP_GENERATION_PROMPT
 
 
 # --- Helper Functions ---

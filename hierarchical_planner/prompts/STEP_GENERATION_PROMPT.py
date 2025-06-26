@@ -18,14 +18,14 @@ Each prompt should be:
 4.  **Include Hints:** Where necessary, suggest tools, libraries, techniques, or external actions (e.g., "Search the web for...", "Install library X", "Write unit tests for Y", "Refactor Z for clarity").
 5.  **Sequential:** The prompts should follow a logical order of execution.
 
-Return the response as a JSON object with a single key "steps" containing a list of dictionaries. Each dictionary must have exactly one key-value pair, where the key is the step identifier (e.g., "step 1", "step 2") and the value is the detailed prompt string for the AI agent.
+Return the response as a JSON object with a single key "steps" containing a list of objects. Each object should have "id" and "description" fields.
 Example:
 {{
   "steps": [
-    {{"step 1": "Create a new Python file named 'parser.py'."}},
-    {{"step 2": "Define a function 'parse_input(data: str) -> dict' in 'parser.py'."}},
-    {{"step 3": "Implement basic error handling for invalid input formats within the 'parse_input' function."}},
-    {{"step 4": "Write three unit tests for the 'parse_input' function using the 'unittest' library, covering valid input, invalid input, and edge cases."}}
+    {{"id": "step_1", "description": "Create a new Python file named 'parser.py'."}},
+    {{"id": "step_2", "description": "Define a function 'parse_input(data: str) -> dict' in 'parser.py'."}},
+    {{"id": "step_3", "description": "Implement basic error handling for invalid input formats within the 'parse_input' function."}},
+    {{"id": "step_4", "description": "Write three unit tests for the 'parse_input' function using the 'unittest' library, covering valid input, invalid input, and edge cases."}}
   ]
 }}
 """

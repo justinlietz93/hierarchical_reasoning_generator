@@ -1,66 +1,69 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple, Callable
 
-# Import client functions
-from .gemini_client import generate_structured_content as gemini_generate_structured_content
-from .gemini_client import generate_content as gemini_generate_content
-from .gemini_client import call_gemini_with_retry
-from .anthropic_client import generate_structured_content as anthropic_generate_structured_content
-from .anthropic_client import generate_content as anthropic_generate_content
-from .anthropic_client import call_anthropic_with_retry
+# Import all client functions
+from . import gemini_client
+from . import anthropic_client
+from . import openai_client
+from .exceptions import ConfigError
 
 logger = logging.getLogger(__name__)
 
-async def select_llm_client(config: Dict[str, Any], provider: Optional[str] = None):
+# A map to hold the client functions for each provider
+PROVIDER_MAP = {
+    "gemini": {
+        "structured": gemini_client.generate_structured_content,
+        "content": gemini_client.generate_content,
+        "retry_call": gemini_client.call_gemini_with_retry,
+    },
+    "anthropic": {
+        "structured": anthropic_client.generate_structured_content,
+        "content": anthropic_client.generate_content,
+        "retry_call": anthropic_client.call_anthropic_with_retry,
+    },
+    "openai": {
+        "structured": openai_client.generate_structured_content,
+        "content": openai_client.generate_content,
+        "retry_call": openai_client.call_openai_with_retry,
+    },
+}
+
+async def select_llm_client(config: Dict[str, Any], agent_name: str) -> Tuple[Callable, Callable, Callable]:
     """
-    Selects the appropriate LLM client based on the configuration and optional provider preference.
-    
+    Selects the appropriate LLM client based on the agent's configuration.
+
+    This function is now explicit and does not fall back to auto-selection.
+    It requires that each agent has a provider defined in the config.
+
     Args:
         config: The application configuration dictionary.
-        provider: Optional provider preference ('gemini', 'anthropic', 'deepseek')
-        
+        agent_name: The name of the agent for which to select the client 
+                    (e.g., 'planner', 'qa_validator').
+
     Returns:
         A tuple containing the appropriate client functions:
         (generate_structured_content, generate_content, call_with_retry)
+
+    Raises:
+        ConfigError: If the specified agent or its provider is not configured.
     """
-    # If a specific provider is requested, try to use it
-    if provider:
-        if provider.lower() == 'anthropic':
-            if 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
-                logger.info("Using Anthropic client with Claude model (user specified).")
-                return (
-                    anthropic_generate_structured_content,
-                    anthropic_generate_content,
-                    call_anthropic_with_retry
-                )
-            else:
-                logger.warning("Anthropic provider requested but API key not configured. Falling back to auto-selection.")
-        elif provider.lower() == 'gemini':
-            if 'api' in config and config.get('api', {}).get('resolved_key'):
-                logger.info("Using Gemini client (user specified).")
-                return (
-                    gemini_generate_structured_content,
-                    gemini_generate_content,
-                    call_gemini_with_retry
-                )
-            else:
-                logger.warning("Gemini provider requested but API key not configured. Falling back to auto-selection.")
-        elif provider.lower() == 'deepseek':
-            logger.warning("DeepSeek provider requested but not yet implemented. Falling back to auto-selection.")
-    
-    # Auto-selection logic (original behavior)
-    # Check if Anthropic is configured
-    if 'anthropic' in config and config.get('anthropic', {}).get('api_key'):
-        logger.info("Using Anthropic client with Claude model (auto-selected).")
+    try:
+        # Get the provider for the specified agent
+        provider = config['agents'][agent_name]['provider']
+        logger.info(f"Using {provider.capitalize()} client for agent '{agent_name}' as per configuration.")
+        
+        # Look up the provider in our map
+        client_functions = PROVIDER_MAP.get(provider.lower())
+        
+        if not client_functions:
+            raise ConfigError(f"Invalid provider '{provider}' specified for agent '{agent_name}'.")
+            
         return (
-            anthropic_generate_structured_content,
-            anthropic_generate_content,
-            call_anthropic_with_retry
+            client_functions["structured"],
+            client_functions["content"],
+            client_functions["retry_call"],
         )
-    # Default to Gemini
-    logger.info("Using Gemini client (auto-selected).")
-    return (
-        gemini_generate_structured_content,
-        gemini_generate_content,
-        call_gemini_with_retry
-    )
+        
+    except KeyError as e:
+        logger.error(f"Configuration error: Missing '{e.args[0]}' for agent '{agent_name}'.")
+        raise ConfigError(f"Configuration for agent '{agent_name}' is missing required key: {e}") from e

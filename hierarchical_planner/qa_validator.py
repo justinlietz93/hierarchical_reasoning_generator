@@ -128,23 +128,37 @@ def validate_plan_structure(plan_data: dict) -> list[str]:
 
                 # Allow for qa_info key, find the prompt key
                 step_keys = list(step_obj.keys())
-                prompt_key = next((k for k in step_keys if k != 'qa_info'), None)
+                
+                # Handle new format with "id" and "description" fields
+                if "description" in step_obj:
+                    prompt_key = "description"
+                    step_value = step_obj.get("description")
+                    
+                    # Validate id field if present
+                    if "id" in step_obj:
+                        step_id = step_obj.get("id")
+                        if not isinstance(step_id, str) or not step_id:
+                            errors.append(f"Step {step_index} 'id' in Task '{task_name}', Phase '{phase_name}' must be a non-empty string.")
+                else:
+                    # Handle old format where step key is dynamic (e.g., "step 1", "step 2")
+                    prompt_key = next((k for k in step_keys if k != 'qa_info'), None)
 
-                if not prompt_key:
-                     # If only qa_info exists or it's empty, it's an error
-                     if len(step_keys) > 0 and all(k == 'qa_info' for k in step_keys):
-                         logger.warning(f"Step {step_index} in Task '{task_name}', Phase '{phase_name}' only contains 'qa_info'. Assuming valid structure but no prompt.")
-                         continue # Allow steps that might *only* have QA info after processing? Or error? Let's allow for now.
-                     else:
-                         errors.append(f"Step {step_index} in Task '{task_name}', Phase '{phase_name}' has no prompt key (e.g., 'step N'). Found keys: {step_keys}")
-                         continue
+                    if not prompt_key:
+                         # If only qa_info exists or it's empty, it's an error
+                         if len(step_keys) > 0 and all(k == 'qa_info' for k in step_keys):
+                             logger.warning(f"Step {step_index} in Task '{task_name}', Phase '{phase_name}' only contains 'qa_info'. Assuming valid structure but no prompt.")
+                             continue # Allow steps that might *only* have QA info after processing? Or error? Let's allow for now.
+                         else:
+                             errors.append(f"Step {step_index} in Task '{task_name}', Phase '{phase_name}' has no prompt key (e.g., 'step N' or 'description'). Found keys: {step_keys}")
+                             continue
 
-                # Check prompt key format (optional, warning only)
-                if not prompt_key.lower().startswith("step"):
-                     logger.warning(f"Step {step_index} key ('{prompt_key}') in Task '{task_name}', Phase '{phase_name}' does not start with 'step'.")
+                    # Check prompt key format (optional, warning only) for old format
+                    if not prompt_key.lower().startswith("step"):
+                         logger.warning(f"Step {step_index} key ('{prompt_key}') in Task '{task_name}', Phase '{phase_name}' does not start with 'step'.")
+                    
+                    step_value = step_obj.get(prompt_key) # Use .get for safety
 
                 # Check prompt value
-                step_value = step_obj.get(prompt_key) # Use .get for safety
                 if not isinstance(step_value, str) or not step_value:
                     errors.append(f"Step {step_index} value ('{prompt_key}') in Task '{task_name}', Phase '{phase_name}' must be a non-empty string (the prompt).")
 
@@ -155,22 +169,34 @@ def validate_plan_structure(plan_data: dict) -> list[str]:
 
     return errors
 
-async def validate_steps(steps: List[Dict[str, Any]], goal: str, phase: str, task: str, config: Dict[str, Any], constitution: Dict[str, Any], provider: Optional[str] = None) -> List[Dict[str, Any]]:
+async def validate_steps(steps: List[Dict[str, Any]], goal: str, phase: str, task: str, config: Dict[str, Any], constitution: Dict[str, Any], agent_name: str) -> List[Dict[str, Any]]:
     """
     Validates a list of steps for a given task.
     """
     logger.info(f"      Validating {len(steps)} steps for Task: {task}")
-    _, _, call_with_retry = await select_llm_client(config, provider)
+    _, _, call_with_retry = await select_llm_client(config, agent_name)
     constitution_str = json.dumps(constitution, indent=2)
 
-    for step_obj in steps:
+    for step_idx, step_obj in enumerate(steps, 1):
         step_keys = list(step_obj.keys())
-        prompt_key = next((k for k in step_keys if k != 'qa_info'), None)
-        if not prompt_key:
-            continue
-        step_prompt = step_obj.get(prompt_key, "")
+        
+        # Handle new format with "id" and "description" fields
+        if "description" in step_obj:
+            prompt_key = "description"
+            step_prompt = step_obj.get("description", "")
+        else:
+            # Handle old format where step key is dynamic (e.g., "step 1", "step 2")
+            prompt_key = next((k for k in step_keys if k != 'qa_info'), None)
+            if not prompt_key:
+                logger.info(f"        [SKIP] Step {step_idx}/{len(steps)}: No prompt key found")
+                continue
+            step_prompt = step_obj.get(prompt_key, "")
+        
         if not step_prompt:
+            logger.info(f"        [SKIP] Step {step_idx}/{len(steps)}: Empty prompt")
             continue
+
+        logger.info(f"        [VALIDATING] Step {step_idx}/{len(steps)}: {prompt_key}")
 
         if "qa_info" not in step_obj:
             step_obj["qa_info"] = {}
@@ -178,6 +204,7 @@ async def validate_steps(steps: List[Dict[str, Any]], goal: str, phase: str, tas
         # Resource Identification
         if "resource_analysis" not in step_obj["qa_info"]:
             try:
+                logger.info(f"        [API CALL] Step {step_idx}/{len(steps)}: Resource analysis...")
                 resource_context = {
                     "goal": goal, "phase": phase, "task": task,
                     "prompt_text": step_prompt, "constitution": constitution_str
@@ -186,6 +213,7 @@ async def validate_steps(steps: List[Dict[str, Any]], goal: str, phase: str, tas
                     RESOURCE_IDENTIFICATION_PROMPT, resource_context, config, is_structured=True
                 )
                 step_obj["qa_info"]["resource_analysis"] = resource_analysis
+                logger.info(f"        [COMPLETE] Step {step_idx}/{len(steps)}: Resource analysis done")
             except Exception as e:
                 logger.error(f"Error during resource analysis for step {prompt_key}: {e}", exc_info=True)
                 step_obj["qa_info"]["resource_analysis_error"] = str(e)
@@ -193,6 +221,7 @@ async def validate_steps(steps: List[Dict[str, Any]], goal: str, phase: str, tas
         # Alignment/Clarity Check
         if "step_critique" not in step_obj["qa_info"]:
             try:
+                logger.info(f"        [API CALL] Step {step_idx}/{len(steps)}: Step critique...")
                 alignment_context = {
                     "goal": goal, "phase": phase, "task": task,
                     "steps_json": json.dumps({prompt_key: step_prompt}, indent=2),
@@ -202,13 +231,15 @@ async def validate_steps(steps: List[Dict[str, Any]], goal: str, phase: str, tas
                     ALIGNMENT_CHECK_PROMPT, alignment_context, config, is_structured=True
                 )
                 step_obj["qa_info"]["step_critique"] = alignment_critique
+                logger.info(f"        [COMPLETE] Step {step_idx}/{len(steps)}: Step critique done")
             except Exception as e:
                 logger.error(f"Error during step critique for step {prompt_key}: {e}", exc_info=True)
                 step_obj["qa_info"]["step_critique_error"] = str(e)
     
+    logger.info(f"      [VALIDATION COMPLETE] All {len(steps)} steps processed for Task: {task}")
     return steps
 
-async def validate_tasks(tasks: List[str], goal: str, phase: str, config: Dict[str, Any], constitution: Dict[str, Any], provider: Optional[str] = None) -> List[str]:
+async def validate_tasks(tasks: List[str], goal: str, phase: str, config: Dict[str, Any], constitution: Dict[str, Any], agent_name: str) -> List[str]:
     """
     Validates a list of tasks for a given phase.
     """
@@ -217,7 +248,7 @@ async def validate_tasks(tasks: List[str], goal: str, phase: str, config: Dict[s
     # In a real implementation, you might have a prompt to check if the tasks are logical for the phase.
     return tasks
 
-async def validate_phases(phases: List[str], goal: str, config: Dict[str, Any], constitution: Dict[str, Any], provider: Optional[str] = None) -> List[str]:
+async def validate_phases(phases: List[str], goal: str, config: Dict[str, Any], constitution: Dict[str, Any], agent_name: str) -> List[str]:
     """
     Validates a list of phases for a given goal.
     """
@@ -231,7 +262,7 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                                    resume: bool = True,
                                    input_path: str = None,
                                    output_path: str = None,
-                                   provider: Optional[str] = None) -> dict:
+                                   agent_name: str = "qa_validator") -> dict:
     """
     Uses an LLM to analyze alignment, identify resources, and annotate the plan.
 
@@ -340,7 +371,7 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
                     step_obj["qa_info"] = {}
 
                 # Select the appropriate LLM client
-                _, _, call_with_retry = await select_llm_client(config, provider)
+                _, _, call_with_retry = await select_llm_client(config, agent_name)
                 
                 # 1. Resource/Action Identification (skip if already done)
                 if "resource_analysis" not in step_obj["qa_info"] and "resource_analysis_error" not in step_obj["qa_info"]:
@@ -431,7 +462,7 @@ async def analyze_and_annotate_plan(plan_data: dict, goal: str, config: Dict[str
 
 # --- Main Execution ---
 
-async def run_validation(input_path: str, output_path: str, config: Dict[str, Any], resume: bool = True, provider: Optional[str] = None, constitution: Optional[Dict[str, Any]] = None):
+async def run_validation(input_path: str, output_path: str, config: Dict[str, Any], resume: bool = True, agent_name: str = "qa_validator", constitution: Optional[Dict[str, Any]] = None):
     """
     Orchestrates the QA validation workflow.
 
@@ -537,7 +568,7 @@ async def run_validation(input_path: str, output_path: str, config: Dict[str, An
             resume=resume,
             input_path=input_path,
             output_path=output_path,
-            provider=provider
+            agent_name=agent_name
         )
         logger.info("Plan analysis and annotation complete.")
     except ApiCallError:

@@ -32,6 +32,7 @@ from .qa_validator import run_validation as run_qa_validation, validate_steps, v
 from .config_loader import load_config # ConfigError is now in exceptions
 from .logger_setup import setup_logging # Added
 from .checkpoint_manager import CheckpointManager # Import the checkpoint manager
+from .constitution_manager import ConstitutionManager # Import the constitution manager
 # Import custom exceptions
 from .exceptions import (
     HierarchicalPlannerError, ConfigError, FileProcessingError,
@@ -72,7 +73,7 @@ from .llm_client_selector import select_llm_client
 
 # --- Main Logic ---
 
-async def generate_constitution(goal: str, config: Dict[str, Any], provider: Optional[str] = None) -> Dict[str, Any]:
+async def generate_constitution(goal: str, config: Dict[str, Any], agent_name: str) -> Dict[str, Any]:
     """
     Generates the project constitution by reading the schema and calling the LLM.
     """
@@ -83,7 +84,7 @@ async def generate_constitution(goal: str, config: Dict[str, Any], provider: Opt
         with open(schema_path, 'r', encoding='utf-8') as f:
             schema = json.load(f)
         
-        _, _, call_with_retry = await select_llm_client(config, provider)
+        _, _, call_with_retry = await select_llm_client(config, agent_name)
         constitution_context = {
             "goal": goal,
             "schema": json.dumps(schema, indent=2)
@@ -109,7 +110,7 @@ async def generate_constitution(goal: str, config: Dict[str, Any], provider: Opt
         raise PlanGenerationError("Could not establish Project Constitution.") from e
 
 
-async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any], resume: bool = True, provider: Optional[str] = None, constitution: Dict[str, Any] = None) -> tuple[dict | None, str | None]:
+async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any], constitution_manager: ConstitutionManager, resume: bool = True) -> tuple[dict | None, str | None]:
     """
     Generates the hierarchical plan (Phases, Tasks, Steps) using Gemini.
 
@@ -121,6 +122,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
         task_file: Absolute path to the input file containing the high-level goal.
         output_file: Absolute path to save the generated JSON plan.
         config: The application configuration dictionary.
+        constitution_manager: The manager for the project constitution.
         resume: Whether to attempt to resume from a checkpoint if available.
 
     Returns:
@@ -186,13 +188,14 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                         logger.info(f"Will resume by processing tasks for phase: {last_processed_phase}")
     
     try:
+        constitution = constitution_manager.constitution
         if not constitution:
             raise PlanGenerationError("Cannot generate plan without a Project Constitution.")
             
         constitution_str = json.dumps(constitution, indent=2)
 
         # Select the appropriate LLM client
-        _, _, call_with_retry = await select_llm_client(config, provider)
+        _, _, call_with_retry = await select_llm_client(config, "planner")
         
         # 3. Generate Phases if we don't have them
         if not reasoning_tree:
@@ -202,7 +205,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
             phases = phase_response.get("phases", [])
 
             if phases:
-                phases = await validate_phases(phases, goal, config, constitution, provider)
+                phases = await validate_phases(phases, goal, config, constitution, "planner")
             
             if not phases:
                 logger.error("Could not generate phases from Gemini response.")
@@ -217,6 +220,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
             checkpoint_path = checkpoint_manager.save_generation_checkpoint(
                 goal=goal, 
                 current_state=reasoning_tree,
+                constitution=constitution,
                 last_processed_phase=None,  # We haven't started processing tasks yet
                 last_processed_task=None
             )
@@ -258,7 +262,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                 tasks = task_response.get("tasks", [])
 
                 if tasks:
-                    tasks = await validate_tasks(tasks, goal, phase, config, constitution, provider)
+                    tasks = await validate_tasks(tasks, goal, phase, config, constitution, "planner")
                 
                 if not tasks:
                     logger.warning(f"No tasks generated for phase '{phase}'. Continuing to next phase.")
@@ -268,6 +272,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                     checkpoint_path = checkpoint_manager.save_generation_checkpoint(
                         goal=goal, 
                         current_state=reasoning_tree,
+                        constitution=constitution,
                         last_processed_phase=phase,
                         last_processed_task=None
                     )
@@ -281,6 +286,7 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                 checkpoint_path = checkpoint_manager.save_generation_checkpoint(
                     goal=goal, 
                     current_state=reasoning_tree,
+                    constitution=constitution,
                     last_processed_phase=phase,
                     last_processed_task=None
                 )
@@ -314,31 +320,40 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
                 
                 # Generate steps for this task
                 logger.info(f"  Generating steps for Task: {task}")
+                logger.info(f"  [API CALL] Sending step generation request to LLM...")
                 step_context = {"goal": goal, "phase": phase, "task": task, "constitution": constitution_str}
                 
                 try:
                     step_response = await call_with_retry(STEP_GENERATION_PROMPT, step_context, config)
+                    logger.info(f"  [API RESPONSE] Received response, processing steps...")
                     steps = step_response.get("steps", [])
 
                     if steps:
-                        steps = await validate_steps(steps, goal, phase, task, config, constitution, provider)
+                        logger.info(f"  [VALIDATION] Validating {len(steps)} generated steps...")
+                        steps = await validate_steps(steps, goal, phase, task, config, constitution, agent_name="qa_validator")
+                        logger.info(f"  [VALIDATION] Step validation completed.")
                     
                     if not steps:
                         logger.warning(f"No steps generated for task '{task}' in phase '{phase}'. Continuing to next task.")
                         # Initialize with empty list to mark as processed
                         reasoning_tree[phase][task] = []
                     else:
-                        logger.info(f"  Generated {len(steps)} steps for task '{task}'")
+                        logger.info(f"  [SUCCESS] Generated and validated {len(steps)} steps for task '{task}'")
                         reasoning_tree[phase][task] = steps
                 except Exception as e:
                     logger.error(f"Error generating steps for task '{task}': {e}", exc_info=True)
                     # Mark the task as having an error by storing a special error indicator
                     reasoning_tree[phase][task] = [{"error": f"Failed to generate steps: {str(e)}"}]
                 
+                # Update constitution from the completed task
+                logger.info(f"--- Updating Constitution after Task: {task} ---")
+                await constitution_manager.update_from_plan(reasoning_tree, config)
+                
                 # Save checkpoint after processing each task
                 checkpoint_path = checkpoint_manager.save_generation_checkpoint(
                     goal=goal, 
                     current_state=reasoning_tree,
+                    constitution=constitution_manager.constitution,
                     last_processed_phase=phase,
                     last_processed_task=task
                 )
@@ -392,14 +407,15 @@ async def generate_plan(task_file: str, output_file: str, config: Dict[str, Any]
         raise PlanGenerationError(f"An unexpected error occurred during plan generation: {e}") from e
 
 
-async def main_workflow(task_file: str, output_file: str, validated_output_file: str, skip_qa: bool, config: Dict[str, Any], skip_resume: bool = False, provider: Optional[str] = None, validate_only: bool = False):
+async def main_workflow(task_file: str, output_file: str, validated_output_file: str, skip_qa: bool, config: Dict[str, Any], skip_resume: bool = False, validate_only: bool = False):
     """
     Orchestrates the full application workflow.
     """
     reasoning_tree: dict | None = None
     goal: str | None = None
-    constitution: dict | None = None
-    
+    constitution_manager = ConstitutionManager()
+    checkpoint_manager = CheckpointManager()
+
     try:
         logger.info(f"Reading goal from: {task_file}")
         with open(task_file, 'r', encoding='utf-8') as f:
@@ -412,18 +428,23 @@ async def main_workflow(task_file: str, output_file: str, validated_output_file:
     try:
         # Determine providers for each agent
         default_provider = config.get('default_provider', 'gemini')
-        architect_provider = provider or config.get('agents', {}).get('founding_architect', {}).get('provider', default_provider)
-        planner_provider = provider or config.get('agents', {}).get('planner', {}).get('provider', default_provider)
-        validator_provider = provider or config.get('agents', {}).get('qa_validator', {}).get('provider', default_provider)
 
-        # Step 0: Generate or Load Project Constitution
+        # --- Synchronized Constitution and Checkpoint Logic ---
         constitution_path = "project_constitution.json"
-        if not skip_resume and os.path.exists(constitution_path):
-            logger.info(f"Loading existing Project Constitution from {constitution_path}")
-            with open(constitution_path, 'r', encoding='utf-8') as f:
-                constitution = json.load(f)
+        checkpoint_data, _ = checkpoint_manager.find_latest_generation_checkpoint(goal)
+
+        if skip_resume or not checkpoint_data:
+            logger.info("No valid checkpoint found or resume skipped. Generating new constitution and plan.")
+            # If we start fresh, we must generate a new constitution
+            constitution_manager.constitution = await generate_constitution(goal, config, "founding_architect")
+            constitution_manager.save()
         else:
-            constitution = await generate_constitution(goal, config, architect_provider)
+            logger.info("Valid checkpoint found. Loading existing constitution to resume.")
+            # If we resume, we must use the existing constitution
+            constitution_manager.constitution = checkpoint_data.get("constitution", {})
+            if not constitution_manager.constitution:
+                logger.error(f"Checkpoint exists but constitution is missing. Halting.")
+                raise PlanValidationError("Constitution not found in checkpoint.")
 
         if validate_only:
             logger.info("--- Running in Validation-Only Mode ---")
@@ -443,9 +464,8 @@ async def main_workflow(task_file: str, output_file: str, validated_output_file:
                 task_file=task_file,
                 output_file=output_file,
                 config=config,
-                resume=not skip_resume,
-                provider=planner_provider,
-                constitution=constitution
+                constitution_manager=constitution_manager,
+                resume=not skip_resume
             )
 
         # Ensure we have a plan to validate
@@ -531,12 +551,6 @@ if __name__ == "__main__":
         help="Directory where the project will be built (default: generated_project or from config)."
     )
     parser.add_argument(
-        "--provider",
-        type=str,
-        choices=['gemini', 'anthropic', 'deepseek'],
-        help="Choose which LLM provider to use (gemini, anthropic, deepseek). If not specified, auto-selects based on available API keys."
-    )
-    parser.add_argument(
         "--validate-only",
         action="store_true",
         help="Run only the QA validation on an existing reasoning tree. Requires --output-file to be set."
@@ -594,7 +608,6 @@ if __name__ == "__main__":
                 skip_qa=args.skip_qa,
                 config=CONFIG,
                 skip_resume=args.no_resume,
-                provider=args.provider,
                 validate_only=args.validate_only
             ))
         except HierarchicalPlannerError as e:

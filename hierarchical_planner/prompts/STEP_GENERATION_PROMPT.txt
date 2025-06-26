@@ -19,11 +19,11 @@ Each prompt should be:
 Your response MUST be a valid JSON object with a single key "steps" containing a list of dictionaries. Each dictionary must have exactly one key-value pair, where the key is the step identifier (e.g., "step 1", "step 2") and the value is the detailed prompt string for the AI agent. Do not include any other text, explanations, or markdown formatting.
 
 Example for a task "Define the schema for the Project Constitution.":
-{{
+{
   "steps": [
-    {{"step 1": "Create a new file named 'project_constitution_schema.json' in the 'config' directory."}},
-    {{"step 2": "Define the JSON schema for the project constitution, including fields for 'project_name', 'core_mission', 'architectural_paradigm', and 'primary_language_and_tech_stack'."}},
-    {{"step 3": "Add a 'key_data_structures' array to the schema to hold critical data entities."}},
-    {{"step 4": "Add a 'global_dependencies_and_interfaces' array to the schema to list essential external libraries and APIs."}}
+    {"step 1": "Create a new file named 'project_constitution_schema.json' in the 'config' directory."},
+    {"step 2": "Define the JSON schema for the project constitution, including fields for 'project_name', 'core_mission', 'architectural_paradigm', and 'primary_language_and_tech_stack'."},
+    {"step 3": "Add a 'key_data_structures' array to the schema to hold critical data entities."},
+    {"step 4": "Add a 'global_dependencies_and_interfaces' array to the schema to list essential external libraries and APIs."}
   ]
-}}
+}

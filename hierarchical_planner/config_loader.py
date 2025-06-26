@@ -37,6 +37,12 @@ DEFAULT_CONFIG: Dict[str, Dict[str, Any]] = {
         'max_output_tokens': 8192,
         'retries': 3
     },
+    'openai':{
+        'api_key': 'OPENAI_API_KEY',
+        'model_name': 'o4-mini-2025-04-16',
+        'reasoning_effort': 'medium',
+        'retries': 3
+    },
     'anthropic': {
         'api_key': 'ANTHROPIC_API_KEY', # Default to checking this env var
         'model_name': 'claude-sonnet-4',
@@ -193,6 +199,18 @@ def load_config(config_path: str = 'config/config.yaml') -> Dict[str, Any]:
         else:
             logger.warning("DeepSeek API key could not be resolved. Fallback to DeepSeek will not be available.")
 
+    # Resolve the OpenAI API key if it exists in config
+    if 'openai' in config:
+        openai_key_setting = config.get('openai', {}).get('api_key')
+        resolved_openai_key = _resolve_api_key(openai_key_setting, 'OPENAI_API_KEY')
+        
+        # Store the resolved key back into the config dict
+        if resolved_openai_key:
+            config['openai']['api_key'] = resolved_openai_key
+            logger.info("OpenAI API key resolved successfully.")
+        else:
+            logger.warning("OpenAI API key could not be resolved. OpenAI client will not be available.")
+
     # Resolve relative file paths (task, output, log) based on the script directory
     # This assumes the paths in config.yaml are relative to the `hierarchical_planner` dir
     for key in ['default_task', 'default_output', 'default_validated_output']:
@@ -219,6 +237,7 @@ if __name__ == "__main__":
         print(f"Resolved Gemini Key: {loaded_config.get('api', {}).get('resolved_key')}")
         print(f"Resolved Anthropic Key: {loaded_config.get('anthropic', {}).get('api_key')}")
         print(f"Resolved DeepSeek Key: {loaded_config.get('deepseek', {}).get('resolved_key')}")
+        print(f"Resolved OpenAI Key: {loaded_config.get('openai', {}).get('api_key')}")
 
     except ConfigError as e:
         print(f"Configuration Error: {e}")

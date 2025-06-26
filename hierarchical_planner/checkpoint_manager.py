@@ -50,6 +50,7 @@ class CheckpointManager:
     def save_generation_checkpoint(self, 
                                   goal: str, 
                                   current_state: Dict[str, Any], 
+                                  constitution: Dict[str, Any],
                                   last_processed_phase: Optional[str] = None, 
                                   last_processed_task: Optional[str] = None) -> str:
         """
@@ -58,6 +59,7 @@ class CheckpointManager:
         Args:
             goal: The high-level goal being processed
             current_state: The current reasoning tree with all generated content so far
+            constitution: The current state of the project constitution
             last_processed_phase: The last successfully processed phase, if any
             last_processed_task: The last successfully processed task within the phase, if any
             
@@ -69,6 +71,7 @@ class CheckpointManager:
             "timestamp": time.time(),
             "goal": goal,
             "reasoning_tree": current_state,
+            "constitution": constitution,
             "last_processed_phase": last_processed_phase,
             "last_processed_task": last_processed_task
         }

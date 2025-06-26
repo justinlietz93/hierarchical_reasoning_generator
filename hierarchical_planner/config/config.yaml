@@ -9,13 +9,12 @@ default_provider: gemini
 agents:
   founding_architect:
     provider: gemini
-    # model_name: "gemini-1.5-pro-latest" # Optional: override the default model for this agent
   planner:
     provider: gemini
-    # model_name: "gemini-1.5-pro-latest"
   qa_validator:
     provider: gemini
-    # model_name: "gemini-1.5-flash-latest"
+  constitution_manager:
+    provider: gemini
 
 # --- API Key and Model Settings ---
 
@@ -33,20 +32,40 @@ api:
 anthropic:
   # API Key for Anthropic API
   api_key: ANTHROPIC_API_KEY
-  model_name: claude-3-opus-20240229 # Default model for Anthropic
+  model_name: claude-sonnet-4 # Default model for Anthropic
   temperature: 0.7
   max_tokens: 8192
   retries: 3
 
-# DeepSeek fallback configuration
-deepseek:
+# DeepSeek configuration
+deepseek: # deepseek-reasoner
   # API Key for DeepSeek API
+    # top_p, and temperature do not apply to the reasoner model
   api_key: DEEPSEEK_API_KEY
   base_url: https://api.deepseek.com/v1
-  model_name: deepseek-coder
+  model_name: deepseek-reasoner
+  max_tokens: 64000  # DO NOT CHANGE THIS VALUE
+  retries: 3
+  supported_features: function_calling, JSON_output, chat_completion, chat_prefix_completion_beta
+
+deepseek-chat:
+  api_key: DEEPSEEK_API_KEY
+  base_url: https://api.deepseek.com/v1
+  model_name: deepseek-chat
   temperature: 0.6
-  max_tokens: 8192
+  max_tokens: 8000
+  retries: 3
   top_p: 1.0
+  supported_features: function_calling, JSON_output, chat_completion, chat_prefix_completion_beta
+
+
+# OpenAI configuration
+openai:
+  # API Key for OpenAI API
+  api_key: OPENAI_API_KEY
+  model_name: o4-mini-2025-04-16
+  reasoning_effort: medium
+  retries: 3
 
 # --- File and Logging Settings ---
 
